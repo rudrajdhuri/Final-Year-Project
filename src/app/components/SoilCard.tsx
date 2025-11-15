@@ -3,15 +3,43 @@
 import React, { useEffect, useState } from 'react';
 
 interface Readings {
-  moisture: number; // %
+  moisture: number;   // %
   temperature: number; // °C
-  ph: number; // pH
+  ph: number;          // pH
 }
 
 export default function SoilCard({ initial }: { initial?: Readings }) {
-  const [readings, setReadings] = useState<Readings>(initial || { moisture: 32.5, temperature: 24.3, ph: 6.8 });
 
-  // Simulate live updates every 5s (replace with real API later)
+  const [readings, setReadings] = useState<Readings>(
+    initial || { moisture: 32.5, temperature: 24.3, ph: 6.8 }
+  );
+
+  const [loading, setLoading] = useState(true);
+
+  // ----------------------------------------
+  // 1️⃣ Fetch from Flask backend first
+  // ----------------------------------------
+  useEffect(() => {
+    fetch("http://localhost:5000/api/soil/readings")
+      .then((res) => res.json())
+      .then((data) => {
+        setReadings({
+          moisture: data.moisture,
+          temperature: data.temperature,
+          ph: data.ph,
+        });
+        setLoading(false);
+      })
+      .catch(() => {
+        console.warn("Backend not reachable — using simulated values.");
+        setLoading(false); // show card anyway
+      });
+  }, []);
+
+  // ----------------------------------------
+  // 2️⃣ Continue live simulated updates every 5 sec
+  //    (these are small adjustments, natural-looking)
+  // ----------------------------------------
   useEffect(() => {
     const id = setInterval(() => {
       setReadings(prev => ({
@@ -20,14 +48,31 @@ export default function SoilCard({ initial }: { initial?: Readings }) {
         ph: +(prev.ph + (Math.random() - 0.5) * 0.05).toFixed(2)
       }));
     }, 5000);
+
     return () => clearInterval(id);
   }, []);
 
+  // ----------------------------------------
+  // 3️⃣ Loading state
+  // ----------------------------------------
+  if (loading) {
+    return (
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 w-full">
+        <p className="text-gray-500 text-sm">Fetching real-time soil readings…</p>
+      </div>
+    );
+  }
+
+  // ----------------------------------------
+  // 4️⃣  UI 
+  // ----------------------------------------
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 text-gray-900 w-full">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold">Soil Sensor Readings</h3>
-        <span className="text-xs text-gray-500">Live • <span className="font-mono">●</span></span>
+        <span className="text-xs text-gray-500">
+          Live • <span className="font-mono">●</span>
+        </span>
       </div>
 
       <div className="grid grid-cols-3 gap-4">
