@@ -27,6 +27,7 @@ const sidebarItems = [
   { icon: Bell, label: 'Notifications', href: '/notifications' },
   { icon: Newspaper, label: 'Agriculture News', href: '/agriculture-news' },
   { icon: MapPin, label: 'Bot Location', href: '/bot-location' },
+  { icon: FileStack, label: 'Soil Sensor Readings', href: '/soil-sensor-readings' },
 ];
 
 interface SidebarItemProps {

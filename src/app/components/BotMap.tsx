@@ -1,7 +1,6 @@
-'use client';
+"use client";
 
 import { useEffect, useState } from 'react';
-import dynamic from 'next/dynamic';
 import { MapPin, Battery, Activity, Satellite, RefreshCw } from 'lucide-react';
 import { useFieldData, formatFieldInfo, getCropColor } from '../hooks/useFieldData';
 
@@ -19,18 +18,6 @@ interface BotLocation {
 }
 
 // Simple interactive map component
-
-interface BotLocation {
-  id: string;
-  name: string;
-  lat: number;
-  lng: number;
-  battery: number;
-  status: 'active' | 'charging' | 'maintenance';
-  task: string;
-  speed: string;
-  lastUpdate: string;
-}
 
 export default function BotMap() {
   const [botLocations, setBotLocations] = useState<BotLocation[]>([]);
@@ -71,8 +58,6 @@ export default function BotMap() {
           speed: '0 m/s',
           lastUpdate: 'Just now'
         };
-        
-        setBotLocations(prev => [userBot, ...prev.filter(bot => bot.id !== 'USER-LOCATION')]);
       },
       (error) => {
         let errorMessage = '';
@@ -413,7 +398,7 @@ export default function BotMap() {
             {isUserLocation && (
               <div className="absolute inset-0 rounded-full border-2 border-blue-300 animate-pulse" style={{
                 boxShadow: '0 0 20px #3b82f6'
-              }}></div>
+              }} />
             )}
           </div>
         );

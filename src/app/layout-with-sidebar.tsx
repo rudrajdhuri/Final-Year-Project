@@ -1,7 +1,8 @@
-'use client';
+"use client";
 
 import { Menu } from 'lucide-react';
 import Sidebar from './components/Sidebar';
+import ThemeToggle from './components/ThemeToggle';
 
 export default function DashboardLayout({
   children,
@@ -32,7 +33,10 @@ export default function DashboardLayout({
                 <span className="bg-yellow-500 text-white text-xs rounded-full px-2 py-1">5</span>
                 <span className="bg-blue-500 text-white text-xs rounded-full px-2 py-1">7</span>
               </div>
-              <div className="w-8 h-8 bg-gray-300 rounded-full"></div>
+              <div className="flex items-center space-x-3">
+                <ThemeToggle />
+                <div className="w-8 h-8 bg-gray-300 rounded-full"></div>
+              </div>
             </div>
           </div>
         </header>
