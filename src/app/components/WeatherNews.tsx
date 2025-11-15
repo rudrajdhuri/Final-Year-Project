@@ -21,9 +21,8 @@ export default function WeatherNews() {
       setLoading(true);
       setError(null);
       
-      const res = await fetch(
-        "https://newsdata.io/api/1/latest?apikey=pub_ebfad28c3bf24c49919265631c02a657&q=weather forecast agriculture"
-      );
+      const res = await fetch("http://localhost:5000/api/weather-news");
+
       
       if (!res.ok) {
         throw new Error(`HTTP error! status: ${res.status}`);
