@@ -588,4 +588,7 @@ export default function BotMap() {
         )}
       </div>
     </div>
+
+      </div>
   );
+}
