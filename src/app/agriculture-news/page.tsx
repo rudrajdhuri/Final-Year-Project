@@ -4,6 +4,16 @@ import { Newspaper, Calendar, User, ExternalLink, Cloud, RefreshCw } from 'lucid
 import { useState, useEffect } from 'react';
 import DashboardLayout from '../layout-with-sidebar';
 
+interface NewsArticle {
+  title: string;
+  description: string;
+  source: string;
+  url: string;
+  image: string;
+  publishedAt: string;
+  content: string;
+}
+
 interface WeatherNewsArticle {
   title: string;
   description: string;
@@ -12,67 +22,39 @@ interface WeatherNewsArticle {
   pubDate: string;
 }
 
-const newsArticles = [
-  {
-    id: 1,
-    title: 'Revolutionary AI-Powered Crop Monitoring System Increases Yield by 25%',
-    excerpt: 'New artificial intelligence technology helps farmers optimize irrigation and detect diseases early, leading to significant improvements in crop production.',
-    author: 'Dr. Sarah Johnson',
-    date: 'September 23, 2025',
-    readTime: '5 min read',
-    category: 'Technology',
-    image: '/api/placeholder/400/200',
-    featured: true
-  },
-  {
-    id: 2,
-    title: 'Sustainable Farming Practices Gain Momentum Worldwide',
-    excerpt: 'Farmers across the globe are adopting eco-friendly methods that reduce environmental impact while maintaining productivity.',
-    author: 'Michael Chen',
-    date: 'September 22, 2025',
-    readTime: '3 min read',
-    category: 'Sustainability',
-    image: '/api/placeholder/400/200'
-  },
-  {
-    id: 3,
-    title: 'Weather Patterns Show Promising Conditions for Winter Crops',
-    excerpt: 'Meteorologists predict favorable weather conditions for the upcoming winter planting season across major agricultural regions.',
-    author: 'Emma Rodriguez',
-    date: 'September 21, 2025',
-    readTime: '4 min read',
-    category: 'Weather',
-    image: '/api/placeholder/400/200'
-  },
-  {
-    id: 4,
-    title: 'Precision Agriculture Drones Reduce Water Usage by 30%',
-    excerpt: 'Advanced drone technology equipped with multispectral cameras helps farmers apply water and nutrients more efficiently.',
-    author: 'James Wilson',
-    date: 'September 20, 2025',
-    readTime: '6 min read',
-    category: 'Technology',
-    image: '/api/placeholder/400/200'
-  },
-  {
-    id: 5,
-    title: 'Organic Produce Demand Reaches All-Time High',
-    excerpt: 'Consumer preference for organic foods continues to drive market growth, creating new opportunities for sustainable farmers.',
-    author: 'Lisa Thompson',
-    date: 'September 19, 2025',
-    readTime: '4 min read',
-    category: 'Market Trends',
-    image: '/api/placeholder/400/200'
-  }
-];
-
-const categories = ['All', 'Technology', 'Sustainability', 'Weather', 'Market Trends'];
-
 export default function AgricultureNewsPage() {
+  const [agriNews, setAgriNews] = useState<NewsArticle[]>([]);
+  const [agriLoading, setAgriLoading] = useState(true);
+  const [agriError, setAgriError] = useState<string | null>(null);
+  
   const [weatherNews, setWeatherNews] = useState<WeatherNewsArticle[]>([]);
   const [weatherLoading, setWeatherLoading] = useState(true);
   const [weatherError, setWeatherError] = useState<string | null>(null);
+  
   const [selectedCategory, setSelectedCategory] = useState('All');
+
+  const categories = ['All', 'Agriculture', 'Weather'];
+
+  const fetchAgricultureNews = async () => {
+    try {
+      setAgriLoading(true);
+      setAgriError(null);
+      
+      const res = await fetch("http://127.0.0.1:5000/api/agri-news");
+      
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      
+      const data = await res.json();
+      setAgriNews(data);
+    } catch (err) {
+      setAgriError(err instanceof Error ? err.message : "Failed to fetch agriculture news");
+      console.error("Agriculture news fetch error:", err);
+    } finally {
+      setAgriLoading(false);
+    }
+  };
 
   const fetchWeatherNews = async () => {
     try {
@@ -104,6 +86,7 @@ export default function AgricultureNewsPage() {
   };
 
   useEffect(() => {
+    fetchAgricultureNews();
     fetchWeatherNews();
   }, []);
 
@@ -151,48 +134,104 @@ export default function AgricultureNewsPage() {
           </div>
         </div>
 
-        {/* Featured Article */}
-        {(selectedCategory === 'All' || selectedCategory === newsArticles[0].category) && (
+        {/* Agriculture News Section */}
+        {(selectedCategory === 'All' || selectedCategory === 'Agriculture') && (
           <div className="mb-8">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="md:flex">
-                <div className="md:w-1/2">
-                  <div className="h-64 md:h-full bg-gradient-to-br from-green-400 to-blue-500"></div>
-                </div>
-                <div className="md:w-1/2 p-8">
-                  <div className="flex items-center space-x-2 mb-3">
-                    <span className="bg-red-100 text-red-800 text-xs font-medium px-2 py-1 rounded-full">
-                      Featured
-                    </span>
-                    <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2 py-1 rounded-full">
-                      {newsArticles[0].category}
-                    </span>
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center space-x-3">
+                <Newspaper className="h-6 w-6 text-green-600" />
+                <h2 className="text-2xl font-bold text-gray-900">Agriculture News</h2>
+              </div>
+              <button
+                onClick={fetchAgricultureNews}
+                disabled={agriLoading}
+                className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm disabled:opacity-50"
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${agriLoading ? 'animate-spin' : ''}`} />
+                {agriLoading ? 'Loading...' : 'Refresh'}
+              </button>
+            </div>
+
+            {agriLoading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {[1, 2, 3, 4, 5, 6].map((i) => (
+                  <div key={i} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden animate-pulse">
+                    <div className="h-48 bg-gray-200"></div>
+                    <div className="p-6">
+                      <div className="h-4 bg-gray-200 rounded mb-3"></div>
+                      <div className="h-3 bg-gray-200 rounded mb-2"></div>
+                      <div className="h-3 bg-gray-200 rounded w-3/4"></div>
+                    </div>
                   </div>
-                  <h2 className="text-2xl font-bold text-gray-900 mb-3">
-                    {newsArticles[0].title}
-                  </h2>
-                  <p className="text-gray-600 mb-4">
-                    {newsArticles[0].excerpt}
-                  </p>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-4 text-sm text-gray-500">
-                      <div className="flex items-center space-x-1">
-                        <User className="h-4 w-4" />
-                        <span>{newsArticles[0].author}</span>
+                ))}
+              </div>
+            ) : agriError ? (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+                <p className="text-red-600 mb-2">⚠️ {agriError}</p>
+                <p className="text-sm text-gray-600 mb-3">Make sure Flask server is running and GNews API key is configured</p>
+                <button
+                  onClick={fetchAgricultureNews}
+                  className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+                >
+                  Try Again
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {agriNews.map((article, idx) => (
+                  <div
+                    key={idx}
+                    className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow"
+                  >
+                    {article.image && (
+                      <div className="h-48 overflow-hidden">
+                        <img 
+                          src={article.image} 
+                          alt={article.title}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="200"%3E%3Crect fill="%23f3f4f6" width="400" height="200"/%3E%3Ctext fill="%239ca3af" font-family="sans-serif" font-size="16" dy="50%25" dx="50%25" text-anchor="middle"%3ENo Image%3C/text%3E%3C/svg%3E';
+                          }}
+                        />
                       </div>
-                      <div className="flex items-center space-x-1">
-                        <Calendar className="h-4 w-4" />
-                        <span>{newsArticles[0].date}</span>
+                    )}
+                    <div className="p-6">
+                      <div className="mb-3">
+                        <span className="bg-green-100 text-green-800 text-xs font-medium px-2 py-1 rounded-full">
+                          {article.source}
+                        </span>
+                      </div>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-2 line-clamp-2">
+                        {article.title}
+                      </h3>
+                      <p className="text-gray-600 text-sm mb-4 line-clamp-3">
+                        {article.description}
+                      </p>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center text-xs text-gray-500">
+                          <Calendar className="h-3 w-3 mr-1" />
+                          {new Date(article.publishedAt).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric'
+                          })}
+                        </div>
+                        <a 
+                          href={article.url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="flex items-center text-blue-600 hover:text-blue-700 text-sm font-medium"
+                        >
+                          Read More
+                          <ExternalLink className="h-4 w-4 ml-1" />
+                        </a>
                       </div>
                     </div>
-                    <button className="text-blue-600 hover:text-blue-700 font-medium flex items-center space-x-1">
-                      <span>Read More</span>
-                      <ExternalLink className="h-4 w-4" />
-                    </button>
                   </div>
-                </div>
+                ))}
               </div>
-            </div>
+            )}
           </div>
         )}
 
@@ -301,53 +340,12 @@ export default function AgricultureNewsPage() {
           </div>
         )}
 
-        {/* Regular News Grid */}
-        {selectedCategory === 'All' && (
-          <div className="mb-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Latest Agriculture News</h2>
+        {/* Load More Button - only show for Agriculture news */}
+        {selectedCategory === 'Agriculture' && agriNews.length > 0 && (
+          <div className="text-center mt-8">
+            <p className="text-sm text-gray-500">Showing {agriNews.length} articles</p>
           </div>
         )}
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {newsArticles.slice(1)
-            .filter(article => selectedCategory === 'All' || article.category === selectedCategory)
-            .map((article) => (
-            <div
-              key={article.id}
-              className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow"
-            >
-              <div className="h-48 bg-gradient-to-br from-gray-200 to-gray-300"></div>
-              <div className="p-6">
-                <div className="mb-3">
-                  <span className="bg-gray-100 text-gray-800 text-xs font-medium px-2 py-1 rounded-full">
-                    {article.category}
-                  </span>
-                </div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2 line-clamp-2">
-                  {article.title}
-                </h3>
-                <p className="text-gray-600 text-sm mb-4 line-clamp-3">
-                  {article.excerpt}
-                </p>
-                <div className="flex items-center justify-between text-xs text-gray-500">
-                  <div className="flex items-center space-x-2">
-                    <span>{article.author}</span>
-                    <span>•</span>
-                    <span>{article.readTime}</span>
-                  </div>
-                  <span>{article.date}</span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Load More Button */}
-        <div className="text-center mt-8">
-          <button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors">
-            Load More {selectedCategory === 'All' ? 'Articles' : selectedCategory + ' Articles'}
-          </button>
-        </div>
         </div>
       </div>
     </DashboardLayout>

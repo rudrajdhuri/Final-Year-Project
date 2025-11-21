@@ -19,7 +19,8 @@ import {
   ChevronDown,
   ChevronRight,
   Newspaper,
-  MapPin
+  MapPin,
+  Camera
 } from 'lucide-react';
 
 const sidebarItems = [
@@ -28,6 +29,7 @@ const sidebarItems = [
   { icon: Newspaper, label: 'Agriculture News', href: '/agriculture-news' },
   { icon: MapPin, label: 'Bot Location', href: '/bot-location' },
   { icon: FileStack, label: 'Soil Sensor Readings', href: '/soil-sensor-readings' },
+  { icon: Camera, label: 'Animal Detection', href: '/animal-detection' },
 ];
 
 interface SidebarItemProps {
