@@ -17,8 +17,10 @@ export default function DashboardContent() {
 
       const botRes = await fetch('http://127.0.0.1:5000/api/bots');
       if (!botRes.ok) throw new Error("Bot API not OK");
+      // const botJson = await botRes.json();
+      // setBotData(botJson);
       const botJson = await botRes.json();
-      setBotData(botJson);
+      setBotData(Array.isArray(botJson) ? botJson[0] : botJson);
 
       const newsRes = await fetch('http://127.0.0.1:5000/api/agri-news');
       if (!newsRes.ok) throw new Error("News API not OK");
