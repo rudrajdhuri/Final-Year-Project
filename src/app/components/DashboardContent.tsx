@@ -65,13 +65,13 @@ export default function DashboardContent() {
       color: "bg-gradient-to-br from-cyan-400 to-cyan-500",
       trend: "down" as const
     },
-    {
-      title: botData?.battery ? `${botData.battery}%` : "N/A",
-      subtitle: "Battery Level",
-      change: "",
-      color: "bg-gradient-to-br from-amber-400 to-orange-500",
-      trend: "up" as const
-    },
+    // {
+    //   title: botData?.battery ? `${botData.battery}%` : "N/A",
+    //   subtitle: "Battery Level",
+    //   change: "",
+    //   color: "bg-gradient-to-br from-amber-400 to-orange-500",
+    //   trend: "up" as const
+    // },
     {
       title: botData?.status ?? "N/A",
       subtitle: "Bot Status",
