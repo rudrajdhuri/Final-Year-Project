@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Tailwind v4: class-based dark mode */
+@variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -10,13 +13,6 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
@@ -31,22 +27,12 @@ html, body, #__next {
   height: 100%;
 }
 
-/* Dark mode by toggling the 'dark' class on <html> or <body> */
-.dark :root {
+html.dark {
+  color-scheme: dark;
   --background: #0a0a0a;
   --foreground: #ededed;
 }
 
-/* Helpful overrides so common white/gray cards invert nicely in dark mode */
-.dark .bg-white { background-color: #0f1724 !important; }
-.dark .border-gray-200 { border-color: #374151 !important; }
-.dark .bg-gray-50 { background-color: #071027 !important; }
-.dark .bg-gray-100 { background-color: #071027 !important; }
-.dark .text-black { color: #e5e7eb !important; }
-.dark .text-gray-900 { color: #e5e7eb !important; }
-.dark .text-gray-600 { color: #9ca3af !important; }
-.dark .text-gray-500 { color: #9ca3af !important; }
-.dark .text-gray-400 { color: #9ca3af !important; }
-.dark .shadow-sm { box-shadow: 0 1px 3px rgba(0,0,0,0.6) !important; }
-.dark .border { border-color: #374151 !important; }
-
+html:not(.dark) {
+  color-scheme: light;
+}
