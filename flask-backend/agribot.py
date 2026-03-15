@@ -14,7 +14,6 @@ def create_app():
         "MONGO_URI",
         "mongodb://localhost:27017/agri_bot"
     )
-
     app.config["SECRET_KEY"] = os.environ.get(
         "SECRET_KEY",
         "default-secret-key"
@@ -30,22 +29,25 @@ def create_app():
     from routes.system_info import system_info_bp
     from routes.animal_detection import animal_detection_bp
     from routes.plant_detection import plant_detection_bp
+    from routes.auto_detection import auto_detection_bp
+    from routes.auth_routes import auth_bp
+    from routes.ai_assistant import ai_assistant_bp
 
-    app.register_blueprint(soil_readings_bp, url_prefix="/api/soil")
-    app.register_blueprint(system_info_bp, url_prefix="/api/system")
-    app.register_blueprint(bots_bp, url_prefix="/api")
-    app.register_blueprint(fields_bp, url_prefix="/api")
-    app.register_blueprint(weather_news_bp, url_prefix="/api")
-    app.register_blueprint(agriculture_bp, url_prefix="/api")
+    app.register_blueprint(soil_readings_bp,    url_prefix="/api/soil")
+    app.register_blueprint(system_info_bp,      url_prefix="/api/system")
+    app.register_blueprint(bots_bp,             url_prefix="/api")
+    app.register_blueprint(fields_bp,           url_prefix="/api")
+    app.register_blueprint(weather_news_bp,     url_prefix="/api")
+    app.register_blueprint(agriculture_bp,      url_prefix="/api")
     app.register_blueprint(animal_detection_bp, url_prefix="/api/animal")
-    app.register_blueprint(plant_detection_bp, url_prefix="/api/plant")
-    
+    app.register_blueprint(plant_detection_bp,  url_prefix="/api/plant")
+    app.register_blueprint(auto_detection_bp,   url_prefix="/api/auto")
+    app.register_blueprint(auth_bp,             url_prefix="/api/auth")
+    app.register_blueprint(ai_assistant_bp, url_prefix="/api/ai")
+
     @app.route("/")
     def home():
-        return {
-            "status": "Backend running",
-            "database": "MongoDB connected"
-        }
+        return {"status": "Backend running", "database": "MongoDB connected"}
 
     @app.route("/api/db-status")
     def db_status():
@@ -56,9 +58,4 @@ def create_app():
 
 if __name__ == "__main__":
     app = create_app()
-    app.run(
-        host="127.0.0.1",
-        port=5000,
-        debug=False,
-        threaded=True
-    )
+    app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)

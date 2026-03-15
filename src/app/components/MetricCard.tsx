@@ -1,4 +1,3 @@
-
 'use client';
 
 import { MoreHorizontal, TrendingUp, TrendingDown } from 'lucide-react';

@@ -3,12 +3,26 @@ import timm
 import torch.nn.functional as F
 from torchvision import transforms
 from PIL import Image
+import cv2
 
 # -------------------------------
 # Device
 # -------------------------------
 device = torch.device("cpu")
 print("Using device:", device)
+
+# -----------------------------
+# Human Face Filter (OpenCV)
+# -----------------------------
+face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+
+def has_human_face(image_path):
+    img = cv2.imread(image_path)
+    if img is None:
+        return False
+    gray  = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.05, minNeighbors=8, minSize=(80, 80))
+    return len(faces) > 0
 
 # -------------------------------
 # Disease Classes (38)
@@ -67,7 +81,6 @@ stage2_model.to(device).eval()
 
 # -------------------------------
 # Animal Guard Model (75 species)
-# Used to reject animal images from plant pipeline
 # -------------------------------
 animal_guard_model = timm.create_model("efficientnet_b0", pretrained=False, num_classes=75)
 animal_guard_model.load_state_dict(torch.load("models/models_stored/animal_species_75.pth", map_location=device))
@@ -81,10 +94,6 @@ transform = transforms.Compose([
     transforms.ToTensor()
 ])
 
-# -------------------------------
-# Animal Guard Threshold
-# If animal model is THIS confident → reject as animal
-# -------------------------------
 ANIMAL_GUARD_THRESHOLD = 0.80
 
 # -------------------------------
@@ -92,12 +101,15 @@ ANIMAL_GUARD_THRESHOLD = 0.80
 # -------------------------------
 def predict(image_path):
 
+    # ===== Human Face Pre-Check =====
+    if has_human_face(image_path):
+        return "⚠ Human detected - Not a plant", 0.0
+
+
     image = Image.open(image_path).convert("RGB")
     tensor = transform(image).unsqueeze(0).to(device)
 
-    # ===== Animal Guard Check =====
-    # Run animal species model first
-    # If it's very confident this is an animal → reject early
+    # ===== Animal Guard =====
     with torch.no_grad():
         animal_out = animal_guard_model(tensor)
         animal_prob = F.softmax(animal_out, dim=1)
@@ -112,9 +124,8 @@ def predict(image_path):
         prob1 = F.softmax(out1, dim=1)
         conf1, pred1 = torch.max(prob1, 1)
 
-    # If Non-Plant
     if pred1.item() == 0:
-        return "❌ Not a plant detected", conf1.item()
+        return f"❌ Not a plant detected ({conf1.item()*100:.2f}%)", conf1.item()
 
     # ===== Stage 2: Disease Detection =====
     with torch.no_grad():
@@ -129,20 +140,20 @@ def predict(image_path):
     predicted_class = disease_classes[pred_index]
 
     # ==============================
-    # THREAT-FOCUSED DECISION LOGIC
+    # DECISION LOGIC
     # ==============================
 
-    # 1️⃣ Low confidence → unclear (far / blurry / new plant)
+    # 1️⃣ Low confidence → unclear
     if confidence < 0.78:
-        return f"⚠ Unclear image - Move closer to leaf ({confidence*100:.2f}%)", confidence
+        return f"⚠ UNCLEAR - Move closer to leaf ({confidence*100:.2f}%)", confidence
 
-    # 2️⃣ If prediction unstable (close top 2 probs) → unclear
+    # 2️⃣ Unstable prediction → unclear
     if (confidence - second_conf) < 0.12:
-        return f"⚠ Unclear image - Focus on single leaf ({confidence*100:.2f}%)", confidence
+        return f"⚠ UNCLEAR - Focus on single leaf ({confidence*100:.2f}%)", confidence
 
-    # 3️⃣ Confident → check threat
+    # 3️⃣ Confident → healthy or unhealthy
     if "healthy" in predicted_class:
-        return f"✅  HEALTHY - No disease detected ({confidence*100:.2f}%)", confidence
+        return f"✅ HEALTHY - No disease detected ({confidence*100:.2f}%)", confidence
     else:
         return f"⚠ UNHEALTHY - Disease detected ({confidence*100:.2f}%)", confidence
 
@@ -151,7 +162,7 @@ def predict(image_path):
 # Test Example
 # -------------------------------
 if __name__ == "__main__":
-    image_path = "pictures/plants/dry2.jpg"  # change image here
+    image_path = "pictures/plants/dry2.jpg"
     result, confidence = predict(image_path)
     print("Result:", result)
     print(f"Confidence: {confidence*100:.2f}%")

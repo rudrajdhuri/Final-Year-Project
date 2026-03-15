@@ -4,12 +4,28 @@ import torch.nn.functional as F
 from torchvision import transforms
 from PIL import Image
 import os
+import cv2
+import numpy as np
 
 # -----------------------------
 # Device
 # -----------------------------
 device = torch.device("cpu")
 print("Using device:", device)
+
+# -----------------------------
+# Human Face Filter (OpenCV)
+# -----------------------------
+face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+
+def has_human_face(image_path):
+    """Returns True if a human face is detected in the image."""
+    img  = cv2.imread(image_path)
+    if img is None:
+        return False
+    gray  = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.05, minNeighbors=8, minSize=(80, 80))
+    return len(faces) > 0
 
 # -----------------------------
 # Animal Classes (75)
@@ -61,23 +77,27 @@ transform = transforms.Compose([
 # -----------------------------
 # Thresholds
 # -----------------------------
-SPECIES_HIGH_CONF       = 0.70   # animal species must be >= this to confirm animal
-SPECIES_GAP             = 0.20   # gap between top1 and top2 species must be >= this
-PLANT_GATE_HIGH_CONF    = 0.80   # plant_vs_nonplant must be >= this to be "high"
-PLANT_DISEASE_HIGH_CONF = 0.80   # plant_disease_38 overall confidence >= this → it's a plant
-PLANT_DISEASE_MID_CONF  = 0.45   # plant_disease_38 confidence >= this AND species < 35% → unclear
-SPECIES_VERY_LOW        = 0.35   # animal species below this is considered very low
+SPECIES_HIGH_CONF       = 0.70
+SPECIES_GAP             = 0.20
+PLANT_GATE_HIGH_CONF    = 0.80
+PLANT_DISEASE_HIGH_CONF = 0.80
+PLANT_DISEASE_MID_CONF  = 0.45
+SPECIES_VERY_LOW        = 0.35
 
 # -----------------------------
 # Prediction Function
 # -----------------------------
 def predict(image_path):
 
+    # ===== Human Face Pre-Check =====
+    # Still returns a result — gets saved to MongoDB and shown in history
+    if has_human_face(image_path):
+        return "⚠ Human detected - Not an animal"
+
     image = Image.open(image_path).convert("RGB")
     tensor = transform(image).unsqueeze(0).to(device)
 
     # ===== Step 1: Plant vs Non-Plant =====
-    # Always run — just record, never stop here
     with torch.no_grad():
         gate_out  = plant_gate_model(tensor)
         gate_prob = F.softmax(gate_out, dim=1)
@@ -110,16 +130,10 @@ def predict(image_path):
 
     # ===== Decision =====
 
-    # CASE 1: Animal species HIGH confidence → Animal detected, DONE
     if top1_conf >= SPECIES_HIGH_CONF and gap >= SPECIES_GAP:
         return f"✅ Threat - Animal: {predicted_class} ({top1_conf*100:.2f}%)"
 
-    # CASE 2: Animal species NOT confident
-    # Now check plant gate result
-
     if is_plant_gate_high:
-        # Plant gate was HIGH → run plant_disease_38 for confirmation
-
         with torch.no_grad():
             disease_out  = plant_disease_model(tensor)
             disease_prob = F.softmax(disease_out, dim=1)
@@ -127,16 +141,10 @@ def predict(image_path):
 
         disease_confidence = disease_conf.item()
 
-        # plant_disease confidence HIGH (≥80%) → definitely a plant
         if disease_confidence >= PLANT_DISEASE_HIGH_CONF:
             return f"❌ No animal detected - Plant image given ({disease_confidence*100:.2f}%)"
-
-        # plant_disease confidence MID (≥45%) AND animal species very low (<35%)
-        # → not confident enough to call it animal
         if disease_confidence >= PLANT_DISEASE_MID_CONF and top1_conf < SPECIES_VERY_LOW:
             return f"⚠ No animal detected - Unclear image ({top1_conf*100:.2f}%)"
-
-        # plant_disease LOW confidence → trust animal model result
         if pred1_val == 0 and stage1_conf > 0.80:
             return f"❌ Not an animal ({stage1_conf*100:.2f}%)"
         if top1_conf < SPECIES_VERY_LOW:
@@ -146,8 +154,6 @@ def predict(image_path):
         return f"⚠ Unclear image ({top1_conf*100:.2f}%)"
 
     else:
-        # Plant gate was LOW → skip plant_disease_38, trust animal model directly
-
         if pred1_val == 0 and stage1_conf > 0.80:
             return f"❌ Not an animal ({stage1_conf*100:.2f}%)"
         if stage1_conf < 0.60:
@@ -163,6 +169,6 @@ def predict(image_path):
 # Test
 # -----------------------------
 if __name__ == "__main__":
-    image_path = "pictures/animal/test.jpg"  # change image here
+    image_path = "pictures/animal/test.jpg"
     result = predict(image_path)
     print("Result:", result)
