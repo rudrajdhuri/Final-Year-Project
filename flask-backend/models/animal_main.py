@@ -16,7 +16,7 @@ print("Using device:", device)
 # -----------------------------
 # Human Face Filter (OpenCV)
 # -----------------------------
-face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+face_cascade = cv2.CascadeClassifier('/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml')
 
 def has_human_face(image_path):
     """Returns True if a human face is detected in the image."""
