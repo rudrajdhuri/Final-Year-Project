@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { useAuth, getGuestHistory, clearGuestHistory } from "../components/AuthContext";
@@ -11,7 +11,7 @@ const API = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000";
 // NextAuth redirects here after successful Google login
 // We fetch the session from NextAuth and save it to our AuthContext
 
-export default function GoogleCallbackPage() {
+function GoogleCallbackContent() {
   const { login } = useAuth();
   const router    = useRouter();
   const params    = useSearchParams();
@@ -75,5 +75,13 @@ export default function GoogleCallbackPage() {
         <p className="text-sm text-gray-500 dark:text-gray-400">Signing in with Google...</p>
       </div>
     </div>
+  );
+}
+
+export default function GoogleCallbackPage() {
+  return (
+    <Suspense>
+      <GoogleCallbackContent />
+    </Suspense>
   );
 }
