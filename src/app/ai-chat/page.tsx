@@ -202,7 +202,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Send, Leaf, Sprout, Sun, CloudRain, Bug, Wheat, MessageCircle } from "lucide-react";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://10.42.0.1:5000";
+const API = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000";
 console.log("Using API:", API);
 
 const SUGGESTIONS = [

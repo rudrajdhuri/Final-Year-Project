@@ -8,7 +8,7 @@ import { Mail, Lock, Eye, EyeOff, User, Leaf, Loader2, Check, X, ArrowLeft, Chec
 import { useAuth, sha256, getGuestHistory, clearGuestHistory } from "../components/AuthContext";
 import ThemeToggle from "../components/ThemeToggle";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://10.42.0.1:5000";
+const API = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000";
 console.log("Using API:", API);
 
 const rules = [

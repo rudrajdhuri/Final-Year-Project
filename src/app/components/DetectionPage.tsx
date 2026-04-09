@@ -1220,7 +1220,7 @@ import { useState, useRef, useEffect } from "react";
 import { useAuth, pushGuestHistory } from "./AuthContext";
 import { Camera, Upload, AlertTriangle, CheckCircle, Loader2, HelpCircle, Square, Bot } from "lucide-react";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://10.42.0.1:5000";
+const API = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000";
 console.log("Using API:", API);
 
 function ResultCard({ result, mode }: { result: any; mode: "animal" | "plant" }) {

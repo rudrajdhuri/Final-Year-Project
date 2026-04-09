@@ -9,7 +9,7 @@ import { Mail, Lock, Eye, EyeOff, Leaf, Loader2, ArrowLeft, CheckCircle } from "
 import { useAuth, sha256, getGuestHistory, clearGuestHistory } from "../components/AuthContext";
 import ThemeToggle from "../components/ThemeToggle";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://10.42.0.1:5000";
+const API = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000";
 console.log("Using API:", API);
 
 function Toast({ message, type }: { message: string; type: "success" | "error" }) {
