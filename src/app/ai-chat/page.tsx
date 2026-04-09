@@ -1,268 +1,107 @@
-// "use client";
-
-// import { useState, useRef, useEffect } from "react";
-// import { Send, Leaf, Sprout, Sun, CloudRain, Bug, Wheat, MessageCircle } from "lucide-react";
-
-// const API = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000";
-
-// const SUGGESTIONS = [
-//   { icon: Bug,       text: "How to treat aphids on tomatoes?" },
-//   { icon: Wheat,     text: "Best fertilizer for wheat crop?" },
-//   { icon: CloudRain, text: "Crop care during monsoon season?" },
-//   { icon: Sun,       text: "Irrigation tips for summer crops?" },
-// ];
-
-// interface Message {
-//   role: "user" | "bot";
-//   text: string;
-// }
-
-// export default function AgriChatPage() {
-//   const [messages,  setMessages]  = useState<Message[]>([]);
-//   const [input,     setInput]     = useState("");
-//   const [isLoading, setIsLoading] = useState(false);
-//   const bottomRef  = useRef<HTMLDivElement>(null);
-//   const inputRef   = useRef<HTMLTextAreaElement>(null);
-
-//   useEffect(() => {
-//     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-//   }, [messages, isLoading]);
-
-//   // Auto-resize textarea
-//   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-//     setInput(e.target.value);
-//     e.target.style.height = "auto";
-//     e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
-//   };
-
-//   const sendMessage = async (text?: string) => {
-//     const msg = (text || input).trim();
-//     if (!msg || isLoading) return;
-
-//     setMessages(prev => [...prev, { role: "user", text: msg }]);
-//     setInput("");
-//     if (inputRef.current) inputRef.current.style.height = "auto";
-//     setIsLoading(true);
-
-//     try {
-//       const res  = await fetch(`${API}/api/ai/chat`, {
-//         method:  "POST",
-//         headers: { "Content-Type": "application/json" },
-//         body:    JSON.stringify({ message: msg }),
-//       });
-//       const data = await res.json();
-//       setMessages(prev => [...prev, {
-//         role: "bot",
-//         text: data.success ? data.reply : `Error: ${data.error}`,
-//       }]);
-//     } catch {
-//       setMessages(prev => [...prev, {
-//         role: "bot",
-//         text: "Sorry, I'm having trouble connecting to the server.",
-//       }]);
-//     } finally {
-//       setIsLoading(false);
-//     }
-//   };
-
-//   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-//     if (e.key === "Enter" && !e.shiftKey) {
-//       e.preventDefault();
-//       sendMessage();
-//     }
-//   };
-
-//   const isEmpty = messages.length === 0;
-
-//   return (
-//     <div className="flex flex-col h-[calc(100vh-57px)] bg-gray-50 dark:bg-gray-950">
-
-//       {/* ── Header ── */}
-//       <div className="shrink-0 px-4 sm:px-6 py-3 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex items-center gap-3">
-//         <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-400 to-green-600 flex items-center justify-center shadow-sm">
-//           <Leaf className="w-4 h-4 text-white" />
-//         </div>
-//         <div>
-//           <h1 className="text-sm font-semibold text-gray-900 dark:text-white leading-none">Agri Expert</h1>
-//           <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">Powered by AI · Always available</p>
-//         </div>
-//         <div className="ml-auto flex items-center gap-1.5">
-//           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-//           <span className="text-xs text-gray-500 dark:text-gray-400">Online</span>
-//         </div>
-//       </div>
-
-//       {/* ── Messages area ── */}
-//       <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-4 space-y-4">
-
-//         {/* Empty state */}
-//         {isEmpty && (
-//           <div className="flex flex-col items-center justify-center h-full gap-6 pb-8">
-//             <div className="text-center">
-//               <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-400 to-green-600 flex items-center justify-center mx-auto mb-4 shadow-lg">
-//                 <Sprout className="w-8 h-8 text-white" />
-//               </div>
-//               <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">Namaste, Farmer! 🌾</h2>
-//               <p className="text-sm text-gray-500 dark:text-gray-400 max-w-xs">
-//                 Ask me anything about crops, diseases, irrigation, or farming tips.
-//               </p>
-//             </div>
-
-//             {/* Suggestion chips */}
-//             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-lg">
-//               {SUGGESTIONS.map(({ icon: Icon, text }) => (
-//                 <button
-//                   key={text}
-//                   onClick={() => sendMessage(text)}
-//                   className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-left text-sm text-gray-700 dark:text-gray-300 hover:border-emerald-400 dark:hover:border-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-all duration-150 shadow-sm"
-//                 >
-//                   <Icon className="w-4 h-4 text-emerald-500 shrink-0" />
-//                   <span className="leading-snug">{text}</span>
-//                 </button>
-//               ))}
-//             </div>
-//           </div>
-//         )}
-
-//         {/* Messages */}
-//         {messages.map((m, i) => (
-//           <div key={i} className={`flex gap-2 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-//             {m.role === "bot" && (
-//               <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-400 to-green-600 flex items-center justify-center shrink-0 mt-0.5 shadow-sm">
-//                 <Leaf className="w-3.5 h-3.5 text-white" />
-//               </div>
-//             )}
-//             <div className={`max-w-[80%] sm:max-w-[70%] px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm ${
-//               m.role === "user"
-//                 ? "bg-emerald-600 text-white rounded-br-sm"
-//                 : "bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-gray-800 rounded-bl-sm"
-//             }`}>
-//               <p className="whitespace-pre-wrap">{m.text}</p>
-//             </div>
-//             {m.role === "user" && (
-//               <div className="w-7 h-7 rounded-lg bg-gray-200 dark:bg-gray-700 flex items-center justify-center shrink-0 mt-0.5">
-//                 <MessageCircle className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
-//               </div>
-//             )}
-//           </div>
-//         ))}
-
-//         {/* Typing indicator */}
-//         {isLoading && (
-//           <div className="flex gap-2 justify-start">
-//             <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-400 to-green-600 flex items-center justify-center shrink-0 mt-0.5 shadow-sm">
-//               <Leaf className="w-3.5 h-3.5 text-white" />
-//             </div>
-//             <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 px-4 py-3 rounded-2xl rounded-bl-sm shadow-sm">
-//               <div className="flex items-center gap-1">
-//                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: "0ms" }} />
-//                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: "150ms" }} />
-//                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: "300ms" }} />
-//               </div>
-//             </div>
-//           </div>
-//         )}
-
-//         <div ref={bottomRef} />
-//       </div>
-
-//       {/* ── Input bar ── */}
-//       <div className="shrink-0 px-3 sm:px-6 py-3 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800">
-//         <div className="flex items-end gap-2 max-w-4xl mx-auto bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl px-4 py-2 focus-within:border-emerald-400 dark:focus-within:border-emerald-600 transition-colors">
-//           <textarea
-//             ref={inputRef}
-//             value={input}
-//             onChange={handleInput}
-//             onKeyDown={handleKey}
-//             placeholder="Ask about crops, pests, or farming tips..."
-//             rows={1}
-//             className="flex-1 bg-transparent outline-none resize-none text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 py-1.5 max-h-[120px]"
-//           />
-//           <button
-//             onClick={() => sendMessage()}
-//             disabled={!input.trim() || isLoading}
-//             className="w-8 h-8 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-200 dark:disabled:bg-gray-700 disabled:cursor-not-allowed flex items-center justify-center transition-colors shrink-0 mb-0.5"
-//           >
-//             <Send className="w-3.5 h-3.5 text-white disabled:text-gray-400" />
-//           </button>
-//         </div>
-//         <p className="text-center text-xs text-gray-400 dark:text-gray-600 mt-2">
-//           Press Enter to send · Shift+Enter for new line
-//         </p>
-//       </div>
-
-//     </div>
-//   );
-// }
-
-
-
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { Send, Leaf, Sprout, Sun, CloudRain, Bug, Wheat, MessageCircle } from "lucide-react";
-
-const API = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000";
-console.log("Using API:", API);
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Send,
+  Leaf,
+  Sprout,
+  Sun,
+  CloudRain,
+  Bug,
+  Wheat,
+  MessageCircle,
+  Sparkles,
+  Clock3,
+} from "lucide-react";
+import { apiFetch } from "@/lib/api";
 
 const SUGGESTIONS = [
-  { icon: Bug,       text: "How to treat aphids on tomatoes?" },
-  { icon: Wheat,     text: "Best fertilizer for wheat crop?" },
-  { icon: CloudRain, text: "Crop care during monsoon season?" },
-  { icon: Sun,       text: "Irrigation tips for summer crops?" },
+  { icon: Bug, text: "How do I control aphids in tomato crops naturally?" },
+  { icon: Wheat, text: "Suggest the best fertilizer schedule for wheat." },
+  { icon: CloudRain, text: "What should farmers do before heavy rain?" },
+  { icon: Sun, text: "How often should I irrigate during summer?" },
 ];
 
 interface Message {
   role: "user" | "bot";
   text: string;
+  timestamp: string;
+}
+
+const WELCOME_MESSAGE: Message = {
+  role: "bot",
+  text: "Hello. I can help with crops, pests, irrigation, fertilizer planning, and disease advice. Ask in any language. I will reply in English by default unless you ask me to use another language.",
+  timestamp: "Now",
+};
+
+function formatNow() {
+  return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 export default function AgriChatPage() {
-  const [messages,  setMessages]  = useState<Message[]>([]);
-  const [input,     setInput]     = useState("");
+  const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
+  const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const bottomRef  = useRef<HTMLDivElement>(null);
-  const inputRef   = useRef<HTMLTextAreaElement>(null);
+  const [draftLines, setDraftLines] = useState(1);
+  const listRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Reset parent scroll to top when page loads
-  useEffect(() => {
-    const main = document.querySelector("main");
-    if (main) main.scrollTop = 0;
-  }, []);
+  const isEmpty = useMemo(() => messages.length <= 1, [messages.length]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const list = listRef.current;
+    if (!list) return;
+    list.scrollTo({ top: list.scrollHeight, behavior: "smooth" });
   }, [messages, isLoading]);
+
+  const resizeInput = (element: HTMLTextAreaElement) => {
+    element.style.height = "auto";
+    const nextHeight = Math.min(element.scrollHeight, 144);
+    element.style.height = `${nextHeight}px`;
+    setDraftLines(Math.max(1, Math.min(5, Math.round(nextHeight / 24))));
+  };
 
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
-    e.target.style.height = "auto";
-    e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
+    resizeInput(e.target);
   };
 
   const sendMessage = async (text?: string) => {
     const msg = (text || input).trim();
     if (!msg || isLoading) return;
-    setMessages(prev => [...prev, { role: "user", text: msg }]);
+
+    setMessages((prev) => [...prev, { role: "user", text: msg, timestamp: formatNow() }]);
     setInput("");
-    if (inputRef.current) inputRef.current.style.height = "auto";
+    setDraftLines(1);
+    if (inputRef.current) {
+      inputRef.current.style.height = "auto";
+    }
     setIsLoading(true);
+
     try {
-      const res  = await fetch(`${API}/api/ai/chat`, {
-        method:  "POST",
+      const res = await apiFetch("/api/ai/chat", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ message: msg }),
+        body: JSON.stringify({ message: msg }),
       });
       const data = await res.json();
-      setMessages(prev => [...prev, {
-        role: "bot",
-        text: data.success ? data.reply : `Error: ${data.error}`,
-      }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "bot",
+          text: data.success ? data.reply : `Error: ${data.error}`,
+          timestamp: formatNow(),
+        },
+      ]);
     } catch {
-      setMessages(prev => [...prev, {
-        role: "bot",
-        text: "Sorry, I'm having trouble connecting to the server.",
-      }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "bot",
+          text: "Sorry, I could not connect to the server. Please try again in a moment.",
+          timestamp: formatNow(),
+        },
+      ]);
     } finally {
       setIsLoading(false);
     }
@@ -275,120 +114,144 @@ export default function AgriChatPage() {
     }
   };
 
-  const isEmpty = messages.length === 0;
-
-  // KEY FIX: use viewport height minus header (h-14 = 56px)
-  // This makes chat fill exactly the screen — footer never shows unless user scrolls main
   return (
-    <div className="flex flex-col bg-gray-50 dark:bg-gray-950 overflow-hidden" style={{ height: "calc(100vh - 56px)" }}>
-
-      {/* Chat header */}
-      <div className="shrink-0 px-4 sm:px-6 py-3 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex items-center gap-3">
-        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-400 to-green-600 flex items-center justify-center shadow-sm">
-          <Leaf className="w-4 h-4 text-white" />
-        </div>
-        <div>
-          <h1 className="text-sm font-semibold text-gray-900 dark:text-white leading-none">Agri Expert</h1>
-          <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">Powered by GROQ AI · Always available</p>
-        </div>
-        <div className="ml-auto flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-xs text-gray-500 dark:text-gray-400">Online</span>
+    <div className="flex min-h-[calc(100vh-56px)] flex-col bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.10),_transparent_28%),linear-gradient(to_bottom,_#f8fafc,_#f1f5f9)] dark:bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.14),_transparent_24%),linear-gradient(to_bottom,_#030712,_#111827)]">
+      <div className="border-b border-gray-200/80 bg-white/85 px-4 py-3 backdrop-blur-sm dark:border-gray-800 dark:bg-gray-900/85 sm:px-6">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 via-green-500 to-lime-500 shadow-lg shadow-emerald-500/20">
+            <Leaf className="h-5 w-5 text-white" />
+          </div>
+          <div>
+            <h1 className="text-sm font-semibold text-gray-900 dark:text-white">Agri Expert</h1>
+            <p className="text-xs text-emerald-700 dark:text-emerald-400">Powered by Groq AI</p>
+          </div>
+          <div className="ml-auto flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+            Online
+          </div>
         </div>
       </div>
 
-      {/* Messages — scrollable, scrollbar hidden */}
-      <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] px-3 sm:px-6 py-4 space-y-4">
+      <div
+        ref={listRef}
+        className="flex-1 overflow-y-auto px-3 py-4 sm:px-6"
+        style={{ overscrollBehavior: "contain" }}
+      >
         {isEmpty && (
-          <div className="flex flex-col items-center justify-center h-full gap-6 pb-8">
-            <div className="text-center">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-400 to-green-600 flex items-center justify-center mx-auto mb-4 shadow-lg">
-                <Sprout className="w-8 h-8 text-white" />
+          <div className="mx-auto flex min-h-full max-w-4xl flex-col items-center justify-center gap-7 pb-10">
+            <div className="max-w-xl text-center">
+              <div className="mx-auto mb-4 flex h-18 w-18 items-center justify-center rounded-[28px] bg-gradient-to-br from-emerald-400 via-green-500 to-lime-500 shadow-xl shadow-emerald-500/20">
+                <Sprout className="h-9 w-9 text-white" />
               </div>
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">HELLO! 🌾</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400 max-w-xs">
-                Ask me anything about crops, diseases, irrigation, or farming tips.
+              <h2 className="text-2xl font-semibold tracking-tight text-gray-900 dark:text-white">
+                Smarter farming help, instantly
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-400">
+                Ask about crop diseases, irrigation, fertilizer schedules, pest treatment, or weather-based farm decisions.
               </p>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-lg">
+
+            <div className="grid w-full max-w-3xl gap-3 sm:grid-cols-2">
               {SUGGESTIONS.map(({ icon: Icon, text }) => (
                 <button
                   key={text}
                   onClick={() => sendMessage(text)}
-                  className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-left text-sm text-gray-700 dark:text-gray-300 hover:border-emerald-400 dark:hover:border-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-all duration-150 shadow-sm"
+                  className="group rounded-2xl border border-gray-200 bg-white/90 p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md dark:border-gray-800 dark:bg-gray-900/80 dark:hover:border-emerald-500/40"
                 >
-                  <Icon className="w-4 h-4 text-emerald-500 shrink-0" />
-                  <span className="leading-snug">{text}</span>
+                  <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <p className="text-sm font-medium leading-6 text-gray-800 dark:text-gray-200">{text}</p>
                 </button>
               ))}
             </div>
+
+            <div className="flex flex-wrap items-center justify-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+              <span className="rounded-full border border-gray-200 bg-white px-3 py-1 dark:border-gray-800 dark:bg-gray-900">English by default</span>
+              <span className="rounded-full border border-gray-200 bg-white px-3 py-1 dark:border-gray-800 dark:bg-gray-900">Ask in any language</span>
+              <span className="rounded-full border border-gray-200 bg-white px-3 py-1 dark:border-gray-800 dark:bg-gray-900">Farmer-focused answers</span>
+            </div>
           </div>
         )}
 
-        {messages.map((m, i) => (
-          <div key={i} className={`flex gap-2 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-            {m.role === "bot" && (
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-400 to-green-600 flex items-center justify-center shrink-0 mt-0.5 shadow-sm">
-                <Leaf className="w-3.5 h-3.5 text-white" />
-              </div>
-            )}
-            <div className={`max-w-[80%] sm:max-w-[70%] px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm ${
-              m.role === "user"
-                ? "bg-emerald-600 text-white rounded-br-sm"
-                : "bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-gray-800 rounded-bl-sm"
-            }`}>
-              <p className="whitespace-pre-wrap">{m.text}</p>
-            </div>
-            {m.role === "user" && (
-              <div className="w-7 h-7 rounded-lg bg-gray-200 dark:bg-gray-700 flex items-center justify-center shrink-0 mt-0.5">
-                <MessageCircle className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
-              </div>
-            )}
-          </div>
-        ))}
+        {!isEmpty && (
+          <div className="mx-auto flex max-w-4xl flex-col gap-4 pb-6">
+            {messages.map((m, i) => (
+              <div key={`${m.role}-${i}`} className={`flex gap-3 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                {m.role === "bot" && (
+                  <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 via-green-500 to-lime-500 shadow-md shadow-emerald-500/20">
+                    <Sparkles className="h-4 w-4 text-white" />
+                  </div>
+                )}
 
-        {isLoading && (
-          <div className="flex gap-2 justify-start">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-400 to-green-600 flex items-center justify-center shrink-0 mt-0.5 shadow-sm">
-              <Leaf className="w-3.5 h-3.5 text-white" />
-            </div>
-            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 px-4 py-3 rounded-2xl rounded-bl-sm shadow-sm">
-              <div className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: "0ms" }} />
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: "150ms" }} />
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: "300ms" }} />
+                <div
+                  className={`max-w-[86%] rounded-3xl px-4 py-3 shadow-sm sm:max-w-[74%] ${
+                    m.role === "user"
+                      ? "rounded-br-md bg-emerald-600 text-white"
+                      : "rounded-bl-md border border-gray-200 bg-white text-gray-800 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200"
+                  }`}
+                >
+                  <p className="whitespace-pre-wrap text-sm leading-7">{m.text}</p>
+                  <div className={`mt-2 flex items-center gap-1 text-[11px] ${m.role === "user" ? "text-emerald-100/90" : "text-gray-400 dark:text-gray-500"}`}>
+                    <Clock3 className="h-3 w-3" />
+                    {m.timestamp}
+                  </div>
+                </div>
+
+                {m.role === "user" && (
+                  <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                    <MessageCircle className="h-4 w-4" />
+                  </div>
+                )}
               </div>
-            </div>
+            ))}
+
+            {isLoading && (
+              <div className="flex gap-3">
+                <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 via-green-500 to-lime-500 shadow-md shadow-emerald-500/20">
+                  <Leaf className="h-4 w-4 text-white" />
+                </div>
+                <div className="rounded-3xl rounded-bl-md border border-gray-200 bg-white px-4 py-3 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                  <div className="flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: "0ms" }} />
+                    <span className="h-2 w-2 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: "120ms" }} />
+                    <span className="h-2 w-2 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: "240ms" }} />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
-        <div ref={bottomRef} />
       </div>
 
-      {/* Input bar */}
-      <div className="shrink-0 px-3 sm:px-6 py-3 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800">
-        <div className="flex items-end gap-2 max-w-4xl mx-auto bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl px-4 py-2 focus-within:border-emerald-400 dark:focus-within:border-emerald-600 transition-colors">
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={handleInput}
-            onKeyDown={handleKey}
-            placeholder="Ask about crops, pests, or farming tips..."
-            rows={1}
-            className="flex-1 bg-transparent outline-none resize-none text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 py-1.5 max-h-[120px]"
-          />
-          <button
-            onClick={() => sendMessage()}
-            disabled={!input.trim() || isLoading}
-            className="w-8 h-8 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-200 dark:disabled:bg-gray-700 disabled:cursor-not-allowed flex items-center justify-center transition-colors shrink-0 mb-0.5"
-          >
-            <Send className="w-3.5 h-3.5 text-white" />
-          </button>
+      <div className="sticky bottom-0 border-t border-gray-200/80 bg-white/92 px-3 py-3 backdrop-blur-md dark:border-gray-800 dark:bg-gray-900/92 sm:px-6">
+        <div className="mx-auto max-w-4xl">
+          <div className="overflow-hidden rounded-[28px] border border-gray-200 bg-gray-50 shadow-sm transition-colors focus-within:border-emerald-400 dark:border-gray-700 dark:bg-gray-800">
+            <div className="flex items-end gap-3 px-4 py-3">
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={handleInput}
+                onKeyDown={handleKey}
+                placeholder="Ask about crops, pests, irrigation, fertilizer, or diseases..."
+                rows={1}
+                className="max-h-36 min-h-[28px] flex-1 resize-none bg-transparent py-1 text-sm leading-6 text-gray-900 outline-none placeholder:text-gray-400 dark:text-white dark:placeholder:text-gray-500"
+              />
+              <button
+                onClick={() => sendMessage()}
+                disabled={!input.trim() || isLoading}
+                className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-600 text-white transition-all hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-gray-300 dark:disabled:bg-gray-700"
+              >
+                <Send className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex items-center justify-between border-t border-gray-200/70 px-4 py-2 text-[11px] text-gray-500 dark:border-gray-700 dark:text-gray-400">
+              <span>Enter to send, Shift+Enter for a new line</span>
+              <span>{draftLines}/5 lines</span>
+            </div>
+          </div>
         </div>
-        <p className="text-center text-xs text-gray-400 dark:text-gray-600 mt-2">
-          Press Enter to send · Shift+Enter for new line
-        </p>
       </div>
-
     </div>
   );
 }
