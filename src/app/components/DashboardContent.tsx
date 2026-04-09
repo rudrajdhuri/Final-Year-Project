@@ -4,9 +4,7 @@ import { useState, useEffect } from 'react';
 import { Download } from 'lucide-react';
 import MetricCard from './MetricCard';
 import Graph from './graph';
-
-const API = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000";
-console.log("Using API:", API);
+import { apiFetch } from "@/lib/api";
 
 export default function DashboardContent() {
   const [selectedPeriod, setSelectedPeriod] = useState("Month");
@@ -17,12 +15,12 @@ export default function DashboardContent() {
   const fetchBotAndNews = async () => {
     try {
       setError(null);
-      const botRes = await fetch(`${API}/api/bots`);
+      const botRes = await apiFetch("/api/bots");
       if (!botRes.ok) throw new Error("Bot API not OK");
       const botJson = await botRes.json();
       setBotData(Array.isArray(botJson) ? botJson[0] : botJson);
 
-      const newsRes = await fetch(`${API}/api/agri-news`);
+      const newsRes = await apiFetch("/api/agri-news");
       if (!newsRes.ok) throw new Error("News API not OK");
       setNews(await newsRes.json());
     } catch (err: any) {

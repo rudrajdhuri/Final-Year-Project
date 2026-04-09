@@ -1,12 +1,10 @@
 "use client";
 
 import { Suspense, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { useAuth, getGuestHistory, clearGuestHistory } from "../components/AuthContext";
-
-const API = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000";
-console.log("Using API:", API);
+import { apiFetch } from "@/lib/api";
 
 // This page handles the Google OAuth callback
 // NextAuth redirects here after successful Google login
@@ -15,7 +13,6 @@ console.log("Using API:", API);
 function GoogleCallbackContent() {
   const { login } = useAuth();
   const router    = useRouter();
-  const params    = useSearchParams();
 
   useEffect(() => {
     const handleCallback = async () => {
@@ -31,7 +28,7 @@ function GoogleCallbackContent() {
 
         // Call Flask to get/create MongoDB user
         const guestHistory = getGuestHistory();
-        const flaskRes = await fetch(`${API}/api/auth/google`, {
+        const flaskRes = await apiFetch("/api/auth/google", {
           method:  "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

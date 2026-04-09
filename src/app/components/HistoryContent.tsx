@@ -3,9 +3,7 @@
 import { useEffect, useState } from "react";
 import { Camera } from "lucide-react";
 import { useAuth, getGuestHistory } from "./AuthContext";
-
-const API = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000";
-console.log("Using API:", API);
+import { apiFetch } from "@/lib/api";
 
 function parseAnimalCard(item: any) {
   const msg: string = item.message || "";
@@ -86,11 +84,11 @@ export default function HistoryContent() {
     }
 
     // ── Logged in: fetch from MongoDB filtered by user_id ──
-    const url = type === "animal"
-      ? `${API}/api/animal/history?user_id=${user!.id}`
-      : `${API}/api/plant/history?user_id=${user!.id}`;
+    const path = type === "animal"
+      ? `/api/animal/history?user_id=${user!.id}`
+      : `/api/plant/history?user_id=${user!.id}`;
 
-    fetch(url)
+    apiFetch(path)
       .then(res => res.json())
       .then(data => { if (data.success) setRecords(data.data); })
       .catch(() => {})

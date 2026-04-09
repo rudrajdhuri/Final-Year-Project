@@ -2,14 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { signIn } from "next-auth/react";
 import Link from "next/link";
 import { Mail, Lock, Eye, EyeOff, User, Leaf, Loader2, Check, X, ArrowLeft, CheckCircle } from "lucide-react";
 import { useAuth, sha256, getGuestHistory, clearGuestHistory } from "../components/AuthContext";
 import ThemeToggle from "../components/ThemeToggle";
-
-const API = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000";
-console.log("Using API:", API);
+import { apiFetch, startGoogleSignIn } from "@/lib/api";
 
 const rules = [
   { label: "At least 8 characters",  test: (p: string) => p.length >= 8 },
@@ -45,7 +42,7 @@ export default function SignupPage() {
 
   const handleGoogle = async () => {
     setGLoading(true);
-    await signIn("google", { callbackUrl: "/auth/google-callback" });
+    startGoogleSignIn("/auth/google-callback");
   };
   const [toast,    setToast]    = useState<{ message: string; type: "success"|"error" } | null>(null);
 
@@ -65,7 +62,7 @@ export default function SignupPage() {
       const hashedPwd    = await sha256(password);
       const guestHistory = getGuestHistory();
 
-      const res = await fetch(`${API}/api/auth/signup`, {
+      const res = await apiFetch("/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, email, password: hashedPwd, guest_history: guestHistory }),

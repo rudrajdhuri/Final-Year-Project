@@ -1219,9 +1219,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useAuth, pushGuestHistory } from "./AuthContext";
 import { Camera, Upload, AlertTriangle, CheckCircle, Loader2, HelpCircle, Square, Bot } from "lucide-react";
-
-const API = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000";
-console.log("Using API:", API);
+import { apiFetch, getApiUrl } from "@/lib/api";
 
 function ResultCard({ result, mode }: { result: any; mode: "animal" | "plant" }) {
   const msg = result?.message || result?.result || "";
@@ -1306,7 +1304,7 @@ function DetectionTab({ mode }: { mode: "animal" | "plant" }) {
     setDetectBusy(true); setResult(null);
     const endpoint = mode === "animal" ? "detect-animal" : "detect-plant";
     try {
-      const res = await fetch(`${API}/api/${mode}/${endpoint}`, {
+      const res = await apiFetch(`/api/${mode}/${endpoint}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ image_base64: image, user_id: user?.id || "guest" }),
       });
@@ -1323,7 +1321,7 @@ function DetectionTab({ mode }: { mode: "animal" | "plant" }) {
   };
 
   useEffect(() => {
-    fetch(`${API}/api/auto/status/${mode}`)
+    apiFetch(`/api/auto/status/${mode}`)
       .then(r => r.json())
       .then(s => {
         if (s.running && s.mode === mode) {
@@ -1339,7 +1337,7 @@ function DetectionTab({ mode }: { mode: "animal" | "plant" }) {
     if (!autoRunning) return;
     const id = setInterval(async () => {
       try {
-        const res = await fetch(`${API}/api/auto/status/${mode}`);
+        const res = await apiFetch(`/api/auto/status/${mode}`);
         const data = await res.json();
         if (data.count > count) {
           setCount(data.count); setCapturing(false);
@@ -1360,19 +1358,17 @@ function DetectionTab({ mode }: { mode: "animal" | "plant" }) {
   const singleCapture = async () => {
     setSingleBusy(true); setResult(null);
     setImage(null); setImageMode(null); setCameraActive(true);
-    const captureUrl = mode === "animal"
-      ? `${API}/api/animal/capture-camera`
-      : `${API}/api/plant/capture-camera`;
     const imageRoute = mode === "animal" ? "animal" : "plant";
     try {
-      const res = await fetch(captureUrl, {
+      const res = await apiFetch(`/api/${imageRoute}/capture-camera`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: user?.id || "guest" }),
       });
       const data = await res.json();
       setResult(data);
       if (data.success) {
-        setImage(data.image_b64 || `${API}/api/${imageRoute}/image/${data.filename}?t=${Date.now()}`);
+        const imageUrl = data.image_b64 || await getApiUrl(`/api/${imageRoute}/image/${data.filename}?t=${Date.now()}`);
+        setImage(imageUrl);
         setImageMode("camera");
         if (isGuest) pushGuestHistory({ ...data, mode, timestamp: Date.now() });
       }
@@ -1383,7 +1379,7 @@ function DetectionTab({ mode }: { mode: "animal" | "plant" }) {
   const startAuto = async () => {
     setStartingAuto(true);
     try {
-      const res = await fetch(`${API}/api/auto/start/${mode}`, {
+      const res = await apiFetch(`/api/auto/start/${mode}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: user?.id || "guest" }),
       });
@@ -1397,7 +1393,7 @@ function DetectionTab({ mode }: { mode: "animal" | "plant" }) {
   };
 
   const stopAuto = async () => {
-    await fetch(`${API}/api/auto/stop/${mode}`, { method: "POST" });
+    await apiFetch(`/api/auto/stop/${mode}`, { method: "POST" });
     setAutoRunning(false); setCapturing(false); setCameraActive(false);
   };
 

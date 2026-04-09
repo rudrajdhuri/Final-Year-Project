@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LogOut, User } from "lucide-react";
 import { useAuth, clearGuestHistory } from "./AuthContext";
+import { apiFetch } from "@/lib/api";
 
 export default function UserAvatar() {
   const { user, logout, isGuest } = useAuth();
@@ -88,8 +89,8 @@ export default function UserAvatar() {
                     // Stop any running auto capture before logout
                     try {
                       await Promise.all([
-                        fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000"}/api/auto/stop/animal`, { method: "POST" }),
-                        fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000"}/api/auto/stop/plant`,  { method: "POST" }),
+                        apiFetch("/api/auto/stop/animal", { method: "POST" }),
+                        apiFetch("/api/auto/stop/plant",  { method: "POST" }),
                       ]);
                     } catch {}
                     logout();

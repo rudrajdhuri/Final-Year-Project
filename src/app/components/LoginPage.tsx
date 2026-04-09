@@ -8,9 +8,7 @@ import Link from "next/link";
 import { Mail, Lock, Eye, EyeOff, Leaf, Loader2, ArrowLeft, CheckCircle } from "lucide-react";
 import { useAuth, sha256, getGuestHistory, clearGuestHistory } from "../components/AuthContext";
 import ThemeToggle from "../components/ThemeToggle";
-
-const API = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000";
-console.log("Using API:", API);
+import { apiFetch, startGoogleSignIn } from "@/lib/api";
 
 function Toast({ message, type }: { message: string; type: "success" | "error" }) {
   return (
@@ -50,8 +48,7 @@ function LoginForm() {
   // Hit the NextAuth endpoint directly via URL redirect instead.
   const handleGoogle = () => {
     setGLoading(true);
-    window.location.href =
-      `/api/auth/signin/google?callbackUrl=${encodeURIComponent("/auth/google-callback")}`;
+    startGoogleSignIn("/auth/google-callback");
   };
 
   // ── Manual login ──
@@ -63,7 +60,7 @@ function LoginForm() {
       const hashedPwd    = await sha256(password);
       const guestHistory = getGuestHistory();
 
-      const res = await fetch(`${API}/api/auth/signin`, {
+      const res = await apiFetch("/api/auth/signin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password: hashedPwd, guest_history: guestHistory }),
