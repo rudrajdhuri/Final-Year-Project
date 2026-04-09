@@ -5,7 +5,8 @@ import { Download } from 'lucide-react';
 import MetricCard from './MetricCard';
 import Graph from './graph';
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000";
+const API = process.env.NEXT_PUBLIC_API_URL || "http://10.42.0.1:5000";
+console.log("Using API:", API);
 
 export default function DashboardContent() {
   const [selectedPeriod, setSelectedPeriod] = useState("Month");
