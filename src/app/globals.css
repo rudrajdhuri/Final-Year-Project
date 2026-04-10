@@ -36,3 +36,12 @@ html.dark {
 html:not(.dark) {
   color-scheme: light;
 }
+
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
