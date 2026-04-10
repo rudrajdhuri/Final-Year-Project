@@ -59,9 +59,7 @@
 # if __name__ == "__main__":
 #     app = create_app()
 #     app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)
-
-
-from flask import Flask, jsonify, request
+from flask import Flask
 from flask_cors import CORS
 import os
 from dotenv import load_dotenv
@@ -84,32 +82,8 @@ def create_app():
         "SECRET_KEY",
         "default-secret-key"
     )
-    app.config["PROXY_SHARED_SECRET"] = os.environ.get(
-        "PROXY_SHARED_SECRET",
-        ""
-    )
 
     mongo.init_app(app)
-
-    @app.before_request
-    def protect_public_tunnel():
-        host = (request.host or "").split(":")[0].lower()
-        shared_secret = app.config.get("PROXY_SHARED_SECRET", "")
-        incoming_secret = request.headers.get("x-agribot-proxy-secret", "")
-
-        local_hosts = {"127.0.0.1", "localhost", "10.42.0.1"}
-        is_hotspot_client = host.startswith("10.42.0.")
-
-        if host in local_hosts or is_hotspot_client:
-            return None
-
-        if shared_secret and incoming_secret == shared_secret:
-            return None
-
-        return jsonify({
-            "success": False,
-            "error": "Direct public access is disabled. Use the AgriBot frontend."
-        }), 403
 
     from routes.weather_news import weather_news_bp
     from routes.agriculture_news import agriculture_bp

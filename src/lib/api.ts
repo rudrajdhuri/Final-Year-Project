@@ -2,15 +2,11 @@
 
 const HOTSPOT_API_URL = "http://10.42.0.1:5000";
 const DEV_API_URL = "http://127.0.0.1:5000";
-const CACHE_KEY = "agribot_api_target";
+const CACHE_KEY = "agribot_api_base";
 const PROBE_PATH = "/api/bots";
 
-type ApiTarget =
-  | { mode: "local"; base: string }
-  | { mode: "proxy"; base: "" };
-
-let resolvedTarget: ApiTarget | null = null;
-let resolvingPromise: Promise<ApiTarget> | null = null;
+let resolvedBase: string | null = null;
+let resolvingPromise: Promise<string> | null = null;
 
 function sanitizeUrl(value?: string) {
   return (value || "").trim().replace(/\/+$/, "");
@@ -41,7 +37,8 @@ async function probe(base: string) {
   }
 }
 
-function candidateLocalBases() {
+function candidateBases() {
+  const envUrl = sanitizeUrl(process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE);
   const savedUrl = typeof window !== "undefined"
     ? sanitizeUrl(sessionStorage.getItem(CACHE_KEY) || "")
     : "";
@@ -49,35 +46,29 @@ function candidateLocalBases() {
     ? sanitizeUrl(`http://${window.location.hostname}:5000`)
     : "";
 
-  return [savedUrl, HOTSPOT_API_URL, hostUrl, DEV_API_URL].filter(
+  return [savedUrl, HOTSPOT_API_URL, envUrl, hostUrl, DEV_API_URL].filter(
     (url, index, arr) => url && arr.indexOf(url) === index
   );
 }
 
-function isHostedSecureFrontend() {
-  if (typeof window === "undefined") return false;
-  return window.location.protocol === "https:";
-}
-
-export async function resolveApiTarget(forceRefresh = false) {
-  if (!forceRefresh && resolvedTarget) return resolvedTarget;
+export async function resolveApiBase(forceRefresh = false) {
+  if (!forceRefresh && resolvedBase) return resolvedBase;
   if (!forceRefresh && resolvingPromise) return resolvingPromise;
 
   resolvingPromise = (async () => {
-    if (!isHostedSecureFrontend()) {
-      for (const base of candidateLocalBases()) {
-        if (await probe(base)) {
-          resolvedTarget = { mode: "local", base: sanitizeUrl(base) };
-          if (typeof window !== "undefined") {
-            sessionStorage.setItem(CACHE_KEY, resolvedTarget.base);
-          }
-          return resolvedTarget;
+    for (const base of candidateBases()) {
+      if (await probe(base)) {
+        resolvedBase = sanitizeUrl(base);
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem(CACHE_KEY, resolvedBase);
         }
+        return resolvedBase;
       }
     }
 
-    resolvedTarget = { mode: "proxy", base: "" };
-    return resolvedTarget;
+    const fallback = sanitizeUrl(process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE) || HOTSPOT_API_URL;
+    resolvedBase = fallback;
+    return fallback;
   })();
 
   try {
@@ -87,20 +78,9 @@ export async function resolveApiTarget(forceRefresh = false) {
   }
 }
 
-export async function resolveApiBase(forceRefresh = false) {
-  const target = await resolveApiTarget(forceRefresh);
-  if (target.mode === "local") {
-    return target.base;
-  }
-  return "";
-}
-
 export async function getApiUrl(path: string, forceRefresh = false) {
-  const target = await resolveApiTarget(forceRefresh);
-  if (target.mode === "local") {
-    return `${target.base}${path}`;
-  }
-  return `/api/proxy${path}`;
+  const base = await resolveApiBase(forceRefresh);
+  return `${base}${path}`;
 }
 
 export async function apiFetch(path: string, init?: RequestInit, forceRefresh = false) {
