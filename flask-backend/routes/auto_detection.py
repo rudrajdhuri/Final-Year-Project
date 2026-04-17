@@ -673,7 +673,7 @@ from datetime import datetime
 
 from models.animal_main import predict as animal_predict
 from models.plant_main import predict as plant_predict
-from database import get_collection, COLLECTIONS
+from database import get_collection, COLLECTIONS, limit_collection
 
 auto_detection_bp = Blueprint('auto_detection', __name__)
 
@@ -715,13 +715,6 @@ def _enforce_upload_limit():
     while len(all_files) > 25:
         os.remove(os.path.join(UPLOAD_FOLDER, all_files[0]))
         all_files.pop(0)
-
-
-def _enforce_mongo_limit(col):
-    if col.count_documents({}) >= 25:
-        oldest = col.find_one(sort=[("timestamp", 1)])
-        if oldest:
-            col.delete_one({"_id": oldest["_id"]})
 
 
 def _capture_frame(prefix):
@@ -772,7 +765,6 @@ def _run_animal(filepath, filename):
 
         image_b64 = _image_to_b64(filepath)
         col = get_collection(COLLECTIONS['ANIMALS'])
-        _enforce_mongo_limit(col)
         col.insert_one({
             "user_id":         user_id,
             "threat_detected": threat, "animal_type": animal_name,
@@ -780,6 +772,7 @@ def _run_animal(filepath, filename):
             "message": result_text, "image_b64": image_b64,
             "timestamp": datetime.utcnow()
         })
+        limit_collection(COLLECTIONS['ANIMALS'])
         with _lock:
             _states["animal"]["count"]       += 1
             _states["animal"]["last_image"]   = filename
@@ -805,13 +798,13 @@ def _run_plant(filepath, filename):
 
         image_b64 = _image_to_b64(filepath)
         col = get_collection("plantdect_data")
-        _enforce_mongo_limit(col)
         col.insert_one({
             "user_id":    user_id,
             "result":     result_text, "confidence": confidence_value,
             "filename":   filename, "image_b64": image_b64,
             "timestamp":  datetime.utcnow()
         })
+        limit_collection("plantdect_data")
         with _lock:
             _states["plant"]["count"]      += 1
             _states["plant"]["last_image"]  = filename

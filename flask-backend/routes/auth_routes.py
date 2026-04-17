@@ -3,7 +3,7 @@ import bcrypt
 import hashlib
 import dns.resolver
 from datetime import datetime
-from database import get_collection
+from database import get_collection, limit_collection
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -234,7 +234,6 @@ def _migrate_guest_history(user_id: str, guest_records: list):
         ts   = datetime.utcfromtimestamp(rec['timestamp'] / 1000) if rec.get('timestamp') else datetime.utcnow()
 
         if mode == 'animal':
-            _enforce_user_limit(animal_col, user_id)
             animal_col.insert_one({
                 "user_id":         user_id,
                 "threat_detected": rec.get('threat_detected', False),
@@ -244,8 +243,8 @@ def _migrate_guest_history(user_id: str, guest_records: list):
                 "image_b64":       rec.get('image_b64', ''),
                 "timestamp":       ts
             })
+            limit_collection("animaldect_data")
         elif mode == 'plant':
-            _enforce_user_limit(plant_col, user_id)
             plant_col.insert_one({
                 "user_id":    user_id,
                 "result":     rec.get('result', rec.get('message', '')),
@@ -253,3 +252,4 @@ def _migrate_guest_history(user_id: str, guest_records: list):
                 "image_b64":  rec.get('image_b64', ''),
                 "timestamp":  ts
             })
+            limit_collection("plantdect_data")

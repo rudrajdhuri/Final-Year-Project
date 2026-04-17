@@ -11,16 +11,24 @@ import {
   Wheat,
   MessageCircle,
   Sparkles,
-  Clock3,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
-import { apiFetch } from "@/lib/api";
 
+const GROQ_API_KEY = process.env.NEXT_PUBLIC_GROQ_API_KEY || "";
 const SUGGESTIONS = [
   { icon: Bug, text: "How do I control aphids in tomato crops naturally?" },
   { icon: Wheat, text: "Suggest the best fertilizer schedule for wheat." },
   { icon: CloudRain, text: "What should farmers do before heavy rain?" },
   { icon: Sun, text: "How often should I irrigate during summer?" },
 ];
+
+const SYSTEM_PROMPT = `You are Agri Expert, a practical agriculture assistant.
+Default response language: English.
+If the user explicitly asks for another language, respond fully in that language.
+Be warm, clear, practical, and concise.
+Focus on farming, crops, pests, irrigation, disease, fertilizer, soil health, weather response, and field-ready advice for Indian farmers.
+Start with the direct answer and then give practical steps when helpful.`;
 
 interface Message {
   role: "user" | "bot";
@@ -37,8 +45,20 @@ export default function AgriChatPage() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [draftLines, setDraftLines] = useState(1);
+  const [isOnline, setIsOnline] = useState(true);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const syncStatus = () => setIsOnline(navigator.onLine);
+    syncStatus();
+    window.addEventListener("online", syncStatus);
+    window.addEventListener("offline", syncStatus);
+    return () => {
+      window.removeEventListener("online", syncStatus);
+      window.removeEventListener("offline", syncStatus);
+    };
+  }, []);
 
   useEffect(() => {
     const list = listRef.current;
@@ -68,29 +88,67 @@ export default function AgriChatPage() {
     if (inputRef.current) {
       inputRef.current.style.height = "auto";
     }
-    setIsLoading(true);
 
-    try {
-      const res = await apiFetch("/api/ai/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: msg }),
-      });
-      const data = await res.json();
+    if (!isOnline) {
       setMessages((prev) => [
         ...prev,
         {
           role: "bot",
-          text: data.success ? data.reply : `Error: ${data.error}`,
+          text: "No Internet - AI Expert requires internet.",
           timestamp: formatNow(),
         },
       ]);
-    } catch {
+      return;
+    }
+
+    if (!GROQ_API_KEY) {
       setMessages((prev) => [
         ...prev,
         {
           role: "bot",
-          text: "Sorry, I could not connect to the server. Please try again in a moment.",
+          text: "Groq API key is missing in frontend configuration.",
+          timestamp: formatNow(),
+        },
+      ]);
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${GROQ_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "llama-3.3-70b-versatile",
+          temperature: 0.5,
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            ...messages.map((message) => ({
+              role: message.role === "bot" ? "assistant" : "user",
+              content: message.text,
+            })),
+            { role: "user", content: msg },
+          ],
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error?.message || "Failed to fetch AI response");
+      }
+
+      const reply = data?.choices?.[0]?.message?.content || "No response received.";
+      setMessages((prev) => [...prev, { role: "bot", text: reply, timestamp: formatNow() }]);
+    } catch (error: any) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "bot",
+          text: error?.message || "Sorry, I could not connect to Groq right now.",
           timestamp: formatNow(),
         },
       ]);
@@ -117,9 +175,15 @@ export default function AgriChatPage() {
             <h1 className="text-sm font-semibold text-gray-900 dark:text-white">Agri Expert</h1>
             <p className="text-xs text-emerald-700 dark:text-emerald-400">Powered by Groq AI</p>
           </div>
-          <div className="ml-auto flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
-            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-            Online
+          <div
+            className={`ml-auto flex items-center gap-2 rounded-full border px-3 py-1 text-xs ${
+              isOnline
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
+                : "border-red-200 bg-red-50 text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300"
+            }`}
+          >
+            {isOnline ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
+            {isOnline ? "Internet Connected" : "No Internet"}
           </div>
         </div>
       </div>
@@ -149,7 +213,8 @@ export default function AgriChatPage() {
                   <button
                     key={text}
                     onClick={() => sendMessage(text)}
-                    className="group rounded-2xl border border-gray-200 bg-white/90 p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md dark:border-gray-800 dark:bg-gray-900/80 dark:hover:border-emerald-500/40"
+                    disabled={!isOnline || !GROQ_API_KEY}
+                    className="group rounded-2xl border border-gray-200 bg-white/90 p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-800 dark:bg-gray-900/80 dark:hover:border-emerald-500/40"
                   >
                     <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
                       <Icon className="h-5 w-5" />
@@ -157,12 +222,6 @@ export default function AgriChatPage() {
                     <p className="text-sm font-medium leading-6 text-gray-800 dark:text-gray-200">{text}</p>
                   </button>
                 ))}
-              </div>
-
-              <div className="flex flex-wrap items-center justify-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                <span className="rounded-full border border-gray-200 bg-white px-3 py-1 dark:border-gray-800 dark:bg-gray-900">English by default</span>
-                <span className="rounded-full border border-gray-200 bg-white px-3 py-1 dark:border-gray-800 dark:bg-gray-900">Ask in any language</span>
-                <span className="rounded-full border border-gray-200 bg-white px-3 py-1 dark:border-gray-800 dark:bg-gray-900">Farmer-focused answers</span>
               </div>
             </div>
 
@@ -205,9 +264,9 @@ export default function AgriChatPage() {
                     </div>
                     <div className="rounded-3xl rounded-bl-md border border-gray-200 bg-white px-4 py-3 shadow-sm dark:border-gray-800 dark:bg-gray-900">
                       <div className="flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: "0ms" }} />
-                        <span className="h-2 w-2 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: "120ms" }} />
-                        <span className="h-2 w-2 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: "240ms" }} />
+                        <span className="h-2 w-2 animate-bounce rounded-full bg-emerald-400" style={{ animationDelay: "0ms" }} />
+                        <span className="h-2 w-2 animate-bounce rounded-full bg-emerald-400" style={{ animationDelay: "120ms" }} />
+                        <span className="h-2 w-2 animate-bounce rounded-full bg-emerald-400" style={{ animationDelay: "240ms" }} />
                       </div>
                     </div>
                   </div>
@@ -229,11 +288,12 @@ export default function AgriChatPage() {
                 onKeyDown={handleKey}
                 placeholder="Ask about crops, pests, irrigation, fertilizer, or diseases..."
                 rows={1}
-                className="max-h-36 min-h-[28px] flex-1 resize-none bg-transparent py-1 text-sm leading-6 text-gray-900 outline-none placeholder:text-gray-400 dark:text-white dark:placeholder:text-gray-500"
+                disabled={!isOnline || !GROQ_API_KEY}
+                className="max-h-36 min-h-[28px] flex-1 resize-none bg-transparent py-1 text-sm leading-6 text-gray-900 outline-none placeholder:text-gray-400 disabled:cursor-not-allowed disabled:opacity-60 dark:text-white dark:placeholder:text-gray-500"
               />
               <button
                 onClick={() => sendMessage()}
-                disabled={!input.trim() || isLoading}
+                disabled={!input.trim() || isLoading || !isOnline || !GROQ_API_KEY}
                 className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-600 text-white transition-all hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-gray-300 dark:disabled:bg-gray-700"
               >
                 <Send className="h-4 w-4" />

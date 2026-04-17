@@ -159,19 +159,18 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Home, Bell, Newspaper, MapPin,
-  FileStack, ShieldAlert, History, Leaf, MessageCircle, Gamepad2,
+  FileStack, ShieldAlert, History, Leaf, Gamepad2, Compass,
 } from "lucide-react";
 
 const NAV = [
   { icon: Home,          label: "Dashboard",           href: "/" },
   { icon: Bell,          label: "Notifications",        href: "/notifications" },
-  { icon: Newspaper,     label: "Agriculture News",     href: "/agriculture-news" },
   { icon: MapPin,        label: "Bot Location",         href: "/bot-location" },
   { icon: FileStack,     label: "Soil Sensor Readings", href: "/soil-sensor-readings" },
   { icon: ShieldAlert,   label: "AI Threat Detection",  href: "/ai-threat-det" },
   { icon: History,       label: "Detection History",    href: "/history" },
-  { icon: MessageCircle, label: "AI Agri Expert",       href: "/ai-chat" },
-  { icon: Gamepad2,      label: "Bot Control",           href: "/bot-control" },
+  { icon: Gamepad2, label: "Bot Control", href: "/bot-control" },
+  { icon: Compass,       label: "Explore More",         href: "/explore-more" },
 ];
 
 export default function Sidebar({ onMobileClose }: { onMobileClose?: () => void }) {

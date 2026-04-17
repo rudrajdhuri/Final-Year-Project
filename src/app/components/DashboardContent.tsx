@@ -9,28 +9,23 @@ import { apiFetch } from "@/lib/api";
 export default function DashboardContent() {
   const [selectedPeriod, setSelectedPeriod] = useState("Month");
   const [botData, setBotData] = useState<any>(null);
-  const [news, setNews] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchBotAndNews = async () => {
+  const fetchBotData = async () => {
     try {
       setError(null);
       const botRes = await apiFetch("/api/bots");
       if (!botRes.ok) throw new Error("Bot API not OK");
       const botJson = await botRes.json();
       setBotData(Array.isArray(botJson) ? botJson[0] : botJson);
-
-      const newsRes = await apiFetch("/api/agri-news");
-      if (!newsRes.ok) throw new Error("News API not OK");
-      setNews(await newsRes.json());
     } catch (err: any) {
       setError(err.message);
     }
   };
 
   useEffect(() => {
-    fetchBotAndNews();
-    const id = setInterval(fetchBotAndNews, 5000);
+    fetchBotData();
+    const id = setInterval(fetchBotData, 5000);
     return () => clearInterval(id);
   }, []);
 
@@ -67,37 +62,34 @@ export default function DashboardContent() {
   ];
 
   return (
-    <div className="p-4 sm:p-6 bg-gray-50 dark:bg-gray-950 min-h-full transition-colors duration-200">
-
+    <div className="min-h-full bg-gray-50 p-4 transition-colors duration-200 dark:bg-gray-950 sm:p-6">
       {error && (
-        <div className="mb-4 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-4 py-2">
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-600 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
           Error fetching data: {error}
         </div>
       )}
 
-      {/* Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {metrics.map((metric, i) => <MetricCard key={i} {...metric} />)}
       </div>
 
-      {/* Graph Card */}
-      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm transition-colors duration-200 mb-5">
-        <div className="p-5 border-b border-gray-200 dark:border-gray-800">
-          <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="mb-5 rounded-xl border border-gray-200 bg-white shadow-sm transition-colors duration-200 dark:border-gray-800 dark:bg-gray-900">
+        <div className="border-b border-gray-200 p-5 dark:border-gray-800">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Agricultural Data</h2>
               <p className="text-sm text-gray-500 dark:text-gray-400">January - July 2025</p>
             </div>
             <div className="flex items-center gap-3">
-              <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
+              <div className="flex rounded-lg bg-gray-100 p-1 dark:bg-gray-800">
                 {["Day", "Month", "Year"].map((period) => (
                   <button
                     key={period}
                     onClick={() => setSelectedPeriod(period)}
-                    className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
+                    className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${
                       selectedPeriod === period
-                        ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm"
-                        : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+                        ? "bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white"
+                        : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
                     }`}
                   >
                     {period}
@@ -106,7 +98,7 @@ export default function DashboardContent() {
               </div>
               <button
                 onClick={() => alert("Export function placeholder")}
-                className="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-lg transition-colors"
+                className="rounded-lg bg-blue-600 p-2 text-white transition-colors hover:bg-blue-700"
               >
                 <Download className="h-4 w-4" />
               </button>
@@ -117,24 +109,6 @@ export default function DashboardContent() {
           <Graph data={botData?.graphData || []} />
         </div>
       </div>
-
-      {/* News Card */}
-      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm p-5 transition-colors duration-200">
-        <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-3">Latest Agriculture News</h3>
-        {news.length > 0 ? (
-          <ul className="space-y-2">
-            {news.map((n, i) => (
-              <li key={i} className="text-sm text-gray-700 dark:text-gray-300">
-                <strong className="text-gray-900 dark:text-white">{n.title}</strong>{" "}
-                — <span className="text-gray-500 dark:text-gray-500">{n.source}</span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-gray-500 dark:text-gray-500">No news available</p>
-        )}
-      </div>
-
     </div>
   );
 }

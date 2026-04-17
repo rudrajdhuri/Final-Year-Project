@@ -705,19 +705,12 @@ import uuid
 from datetime import datetime
 
 from models.animal_main import predict
-from database import get_collection, COLLECTIONS
+from database import get_collection, COLLECTIONS, limit_collection
 
 animal_detection_bp = Blueprint('animal_detection', __name__)
 
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-def _enforce_user_limit(col, user_id: str, limit: int = 25):
-    count = col.count_documents({"user_id": user_id})
-    if count >= limit:
-        oldest = col.find_one({"user_id": user_id}, sort=[("timestamp", 1)])
-        if oldest:
-            col.delete_one({"_id": oldest["_id"]})
 
 def _image_to_b64(filepath: str, max_size: int = 400) -> str:
     try:
@@ -735,7 +728,6 @@ def _image_to_b64(filepath: str, max_size: int = 400) -> str:
 
 def _save_and_cleanup(animal_col, user_id, threat, animal_name, confidence, result_text, filepath, filename):
     image_b64 = _image_to_b64(filepath)
-    _enforce_user_limit(animal_col, user_id)
     animal_col.insert_one({
         "user_id":         user_id,
         "threat_detected": threat,
@@ -746,6 +738,7 @@ def _save_and_cleanup(animal_col, user_id, threat, animal_name, confidence, resu
         "image_b64":       image_b64,
         "timestamp":       datetime.utcnow()
     })
+    limit_collection(COLLECTIONS['ANIMALS'])
     try:
         if os.path.exists(filepath):
             os.remove(filepath)
