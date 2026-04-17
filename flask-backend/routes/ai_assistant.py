@@ -1,10 +1,9 @@
 import os
-from groq import Groq
+
 from flask import Blueprint, request, jsonify
+from groq import Groq
 
-ai_assistant_bp = Blueprint('ai_assistant', __name__)
-
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+ai_assistant_bp = Blueprint("ai_assistant", __name__)
 
 SYSTEM_PROMPT = """
 You are Agri Expert, a modern AI farming assistant for practical agricultural help.
@@ -44,13 +43,33 @@ Answer style:
 - If the user asks non-agriculture questions, still help briefly in a useful general-assistant way.
 """.strip()
 
-@ai_assistant_bp.route('/ask-expert', methods=['POST'])
+
+def _get_client():
+    api_key = os.getenv("GROQ_API_KEY", "").strip()
+    if not api_key:
+        return None
+    return Groq(api_key=api_key)
+
+
+def _offline_response(message: str):
+    return jsonify({
+        "success": False,
+        "offline": True,
+        "error": message,
+    }), 200
+
+
+@ai_assistant_bp.route("/ask-expert", methods=["POST"])
 def ask_expert():
     print("AI Expert: Request Received")
+    client = _get_client()
+    if client is None:
+        return _offline_response("AI assistant unavailable offline. Set GROQ_API_KEY to enable this feature.")
+
     try:
-        data  = request.json
-        mode  = data.get('mode')
-        label = data.get('label')
+        data = request.json or {}
+        mode = data.get("mode")
+        label = data.get("label")
 
         prompt = f"Expert advice for {mode} detected as {label}. Provide treatment in English and a 2-line summary in Hindi."
 
@@ -58,33 +77,37 @@ def ask_expert():
             model="llama-3.3-70b-versatile",
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user",   "content": prompt},
+                {"role": "user", "content": prompt},
             ],
             max_tokens=500,
         )
 
         return jsonify({
-            "success":  True,
-            "analysis": response.choices[0].message.content
+            "success": True,
+            "analysis": response.choices[0].message.content,
         })
     except Exception as e:
         print(f"AI Expert ERROR: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-@ai_assistant_bp.route('/chat', methods=['POST'])
+@ai_assistant_bp.route("/chat", methods=["POST"])
 def chat_with_groq():
     print("--- AI Chat: Request Received ---")
+    client = _get_client()
+    if client is None:
+        return _offline_response("AI chat unavailable offline. Set GROQ_API_KEY to enable this feature.")
+
     try:
-        data         = request.json
-        user_message = data.get('message')
+        data = request.json or {}
+        user_message = data.get("message")
         print(f"User Message: {user_message}")
 
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user",   "content": user_message},
+                {"role": "user", "content": user_message},
             ],
             temperature=0.5,
             max_tokens=700,
@@ -94,7 +117,7 @@ def chat_with_groq():
         print("AI Chat: Groq Responded Successfully")
         return jsonify({
             "success": True,
-            "reply":   reply
+            "reply": reply,
         })
     except Exception as e:
         print(f"AI Chat ERROR: {str(e)}")
