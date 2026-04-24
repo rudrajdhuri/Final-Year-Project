@@ -46,7 +46,7 @@ function candidateBases() {
     ? sanitizeUrl(`http://${window.location.hostname}:5000`)
     : "";
 
-  return [savedUrl, envUrl, hostUrl, HOTSPOT_API_URL, DEV_API_URL].filter(
+  return [hostUrl, envUrl, HOTSPOT_API_URL, savedUrl, DEV_API_URL].filter(
     (url, index, arr) => url && arr.indexOf(url) === index
   );
 }

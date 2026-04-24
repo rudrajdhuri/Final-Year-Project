@@ -473,8 +473,8 @@ const ESP32_WS_URL = "ws://192.168.4.1/CarInput";
 // "Speed,150" = Set speed 0–255
 
 const CMD = {
-  F: "MoveCar,1",
-  B: "MoveCar,2",
+  F: "MoveCar,2",
+  B: "MoveCar,1",
   L: "MoveCar,4",  // ← SWAPPED: user presses L → send Right (4) to ESP32
   R: "MoveCar,3",  // ← SWAPPED: user presses R → send Left  (3) to ESP32
   S: "MoveCar,0",
