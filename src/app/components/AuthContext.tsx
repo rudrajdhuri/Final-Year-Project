@@ -96,6 +96,7 @@ function sha256Fallback(ascii: string): string {
   const k: number[] = [];
   let primeCounter = 0;
   let result = "";
+  const asciiBitLength = ascii.length * 8;
 
   const isPrime = (n: number) => {
     for (let factor = 2; factor * factor <= n; factor += 1) {
@@ -124,9 +125,8 @@ function sha256Fallback(ascii: string): string {
     words[i >> 2] |= ascii.charCodeAt(i) << ((3 - i) % 4) * 8;
   }
 
-  const bitLength = ascii.length * 8;
-  words[words.length] = Math.floor(bitLength / maxWord);
-  words[words.length] = bitLength;
+  words[words.length] = Math.floor(asciiBitLength / maxWord);
+  words[words.length] = asciiBitLength;
 
   for (let j = 0; j < words.length; ) {
     const w = words.slice(j, (j += 16));
