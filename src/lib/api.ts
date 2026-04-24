@@ -1,6 +1,6 @@
 "use client";
 
-const HOTSPOT_API_URL = "http://10.42.0.1:5000";
+const HOTSPOT_API_URL = "http://192.168.4.10:5000";
 const DEV_API_URL = "http://127.0.0.1:5000";
 const CACHE_KEY = "agribot_api_base";
 const PROBE_PATH = "/api/bots";
@@ -46,7 +46,7 @@ function candidateBases() {
     ? sanitizeUrl(`http://${window.location.hostname}:5000`)
     : "";
 
-  return [savedUrl, HOTSPOT_API_URL, envUrl, hostUrl, DEV_API_URL].filter(
+  return [savedUrl, envUrl, hostUrl, HOTSPOT_API_URL, DEV_API_URL].filter(
     (url, index, arr) => url && arr.indexOf(url) === index
   );
 }

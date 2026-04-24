@@ -72,7 +72,7 @@ torch.set_num_threads(2)  # limit CPU threads on Pi — keeps Pi stable during i
 
 def create_app():
     app = Flask(__name__)
-    CORS(app, origins="*")
+    CORS(app, resources={r"/*":{"origins": "*"}})
 
     app.config["MONGO_URI"] = os.environ.get(
         "MONGO_URI",
