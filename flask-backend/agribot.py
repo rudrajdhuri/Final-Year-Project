@@ -65,6 +65,7 @@ import os
 from dotenv import load_dotenv
 from database import mongo
 from services.esp32_bridge import start_sensor_bridge
+from services.live_detection_service import bind_live_detection_app
 
 load_dotenv()
 
@@ -85,6 +86,7 @@ def create_app():
     )
 
     mongo.init_app(app)
+    bind_live_detection_app(app)
 
     from routes.weather_news import weather_news_bp
     from routes.agriculture_news import agriculture_bp

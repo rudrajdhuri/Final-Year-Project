@@ -12,7 +12,7 @@ const NAV = [
   { icon: ShieldAlert, label: "AI Threat Detection", href: "/ai-threat-det" },
   { icon: History, label: "Detection History", href: "/history" },
   { icon: Gamepad2, label: "Bot Control", href: "/bot-control" },
-  { icon: Compass, label: "Explore More", href: "/explore-more" },
+  // { icon: Compass, label: "Explore More", href: "/explore-more" },
 ];
 
 export default function Sidebar({ onMobileClose }: { onMobileClose?: () => void }) {

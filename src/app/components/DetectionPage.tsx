@@ -1,1274 +1,163 @@
-// "use client";
-
-// import { useState, useRef, useEffect } from "react";
-// import { useAuth, pushGuestHistory } from "./AuthContext";
-// import { Camera, Upload, AlertTriangle, CheckCircle, Loader2, HelpCircle, Square } from "lucide-react";
-
-// const API = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000";
-
-// function ResultCard({ result, mode }: { result: any; mode: "animal" | "plant" }) {
-//   const msg = result?.message || result?.result || "";
-
-//   let s = {
-//     wrap:  "border-emerald-400 dark:border-emerald-600 bg-emerald-50 dark:bg-emerald-900/20",
-//     title: "text-emerald-800 dark:text-emerald-300",
-//     body:  "text-emerald-700 dark:text-emerald-400",
-//     icon:  <CheckCircle className="w-7 h-7 text-emerald-500 shrink-0" />,
-//     label: mode === "animal" ? "✅ All Clear" : "✅ Healthy Plant",
-//   };
-
-//   if (!result?.success) {
-//     s = { wrap: "border-amber-400 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20", title: "text-amber-800 dark:text-amber-300", body: "text-amber-700 dark:text-amber-400", icon: <AlertTriangle className="w-7 h-7 text-amber-500 shrink-0" />, label: "⚠️ Error" };
-//   } else if (mode === "animal") {
-//     if (msg.includes("✅ Threat") && msg.includes("Animal:"))
-//       s = { wrap: "border-red-400 dark:border-red-600 bg-red-50 dark:bg-red-900/20", title: "text-red-800 dark:text-red-300", body: "text-red-700 dark:text-red-400", icon: <AlertTriangle className="w-7 h-7 text-red-500 shrink-0" />, label: "⚠️ Threat Detected!" };
-//     else if (msg.includes("Human detected"))
-//       s = { wrap: "border-purple-300 dark:border-purple-600 bg-purple-50 dark:bg-purple-900/20", title: "text-purple-800 dark:text-purple-300", body: "text-purple-700 dark:text-purple-400", icon: <AlertTriangle className="w-7 h-7 text-purple-500 shrink-0" />, label: "👤 Human Detected" };
-//     else if (msg.includes("⚠"))
-//       s = { wrap: "border-amber-400 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20", title: "text-amber-800 dark:text-amber-300", body: "text-amber-700 dark:text-amber-400", icon: <AlertTriangle className="w-7 h-7 text-amber-500 shrink-0" />, label: "⚠️ Unclear" };
-//   } else {
-//     if (msg.includes("UNHEALTHY") || (msg.includes("Threat Detected") && !msg.includes("No Threat")))
-//       s = { wrap: "border-orange-400 dark:border-orange-600 bg-orange-50 dark:bg-orange-900/20", title: "text-orange-800 dark:text-orange-300", body: "text-orange-700 dark:text-orange-400", icon: <AlertTriangle className="w-7 h-7 text-orange-500 shrink-0" />, label: "🌿 Disease Detected" };
-//     else if (msg.includes("Animal image given"))
-//       s = { wrap: "border-red-400 dark:border-red-600 bg-red-50 dark:bg-red-900/20", title: "text-red-800 dark:text-red-300", body: "text-red-700 dark:text-red-400", icon: <AlertTriangle className="w-7 h-7 text-red-500 shrink-0" />, label: "⚠️ Animal Detected" };
-//     else if (msg.includes("Not a plant"))
-//       s = { wrap: "border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/60", title: "text-gray-700 dark:text-gray-300", body: "text-gray-600 dark:text-gray-400", icon: <HelpCircle className="w-7 h-7 text-gray-400 shrink-0" />, label: "❌ Not a Plant" };
-//     else if (msg.includes("UNCLEAR") || msg.includes("Unclear"))
-//       s = { wrap: "border-amber-400 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20", title: "text-amber-800 dark:text-amber-300", body: "text-amber-700 dark:text-amber-400", icon: <AlertTriangle className="w-7 h-7 text-amber-500 shrink-0" />, label: "⚠️ Unclear" };
-//     else if (msg.includes("Human detected"))
-//       s = { wrap: "border-purple-300 dark:border-purple-600 bg-purple-50 dark:bg-purple-900/20", title: "text-purple-800 dark:text-purple-300", body: "text-purple-700 dark:text-purple-400", icon: <AlertTriangle className="w-7 h-7 text-purple-500 shrink-0" />, label: "👤 Human Detected" };
-//   }
-
-//   return (
-//     <div className={`rounded-xl border-2 ${s.wrap} p-5 transition-colors duration-200`}>
-//       <div className="flex items-start gap-4">
-//         {s.icon}
-//         <div className="flex-1 min-w-0">
-//           <p className={`text-base font-bold mb-1 ${s.title}`}>{s.label}</p>
-//           <p className={`text-sm mb-2 ${s.body}`}>{msg || result?.error}</p>
-//           <div className="flex flex-wrap gap-3">
-//             {result?.confidence > 0 && (
-//               <div className="bg-white dark:bg-gray-900 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-//                 <p className="text-xs text-gray-500 dark:text-gray-400">Confidence</p>
-//                 <p className="text-sm font-semibold text-gray-900 dark:text-white">{result.confidence}%</p>
-//               </div>
-//             )}
-//             {result?.animal_type && result.animal_type !== "Unknown" && (
-//               <div className="bg-white dark:bg-gray-900 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-//                 <p className="text-xs text-gray-500 dark:text-gray-400">Animal</p>
-//                 <p className="text-sm font-semibold text-gray-900 dark:text-white capitalize">{result.animal_type}</p>
-//               </div>
-//             )}
-//           </div>
-//         </div>
-//       </div>
-//     </div>
-//   );
-// }
-
-// function DetectionTab({ mode }: { mode: "animal" | "plant" }) {
-//   const { user, isGuest } = useAuth();
-//   const [image,        setImage]        = useState<string | null>(null);
-//   const [imageMode,    setImageMode]    = useState<"upload" | "camera" | null>(null);
-//   const [cameraActive, setCameraActive] = useState(false);
-//   const [result,       setResult]       = useState<any>(null);
-//   const [detectBusy,   setDetectBusy]   = useState(false);
-//   const [singleBusy,   setSingleBusy]   = useState(false);
-//   const [startingAuto, setStartingAuto] = useState(false);
-//   const [autoRunning,  setAutoRunning]  = useState(false);
-//   const [count,        setCount]        = useState(0);
-//   const [capturing,    setCapturing]    = useState(false);
-//   const maxCap = 10;
-//   const fileInputRef = useRef<HTMLInputElement>(null);
-
-//   const handleFile = (file: File) => {
-//     const reader = new FileReader();
-//     reader.onloadend = () => {
-//       setImage(reader.result as string);
-//       setImageMode("upload");
-//       setResult(null);
-//     };
-//     reader.readAsDataURL(file);
-//   };
-
-//   const detectImage = async () => {
-//     if (!image || imageMode !== "upload") return;
-//     setDetectBusy(true); setResult(null);
-//     const endpoint = mode === "animal" ? "detect-animal" : "detect-plant";
-//     try {
-//       const res = await fetch(`${API}/api/${mode}/${endpoint}`, {
-//         method: "POST",
-//         headers: { "Content-Type": "application/json" },
-//         body: JSON.stringify({ image_base64: image, user_id: user?.id || "guest" }),
-//       });
-//       const data = await res.json();
-//       setResult(data);
-//       if (isGuest && data.success) {
-//         pushGuestHistory({ ...data, mode, timestamp: Date.now(), image_b64: data.image_b64 || image });
-//       }
-//     } catch {
-//       setResult({ success: false, error: "Backend connection failed" });
-//     } finally {
-//       setDetectBusy(false);
-//     }
-//   };
-
-//   const resetImage = () => {
-//     setImage(null); setImageMode(null); setResult(null);
-//     if (fileInputRef.current) fileInputRef.current.value = "";
-//   };
-
-//   useEffect(() => {
-//     fetch(`${API}/api/auto/status/${mode}`)
-//       .then(r => r.json())
-//       .then(s => {
-//         if (s.running && s.mode === mode) {
-//           setAutoRunning(true);
-//           setCount(s.count ?? 0);
-//           const imgSrc = s.image_b64 || s.last_result?.image_b64 || null;
-//           if (imgSrc) { setImage(imgSrc); setImageMode("camera"); }
-//           if (s.last_result) setResult(s.last_result);
-//         }
-//       })
-//       .catch(() => {});
-//   }, [mode]);
-
-//   useEffect(() => {
-//     if (!autoRunning) return;
-//     const id = setInterval(async () => {
-//       try {
-//         const res  = await fetch(`${API}/api/auto/status/${mode}`);
-//         const data = await res.json();
-//         if (data.count > count) {
-//           setCount(data.count);
-//           setCapturing(false);
-//           if (data.last_result) {
-//             const imgSrc = data.image_b64 || data.last_result.image_b64 || null;
-//             if (imgSrc) { setImage(imgSrc); setImageMode("camera"); setCameraActive(false); }
-//             setResult(data.last_result);
-//             if (isGuest) pushGuestHistory({ ...data.last_result, mode, timestamp: Date.now(), image_b64: imgSrc || "" });
-//           }
-//         } else if (data.running) {
-//           setCapturing(true);
-//         }
-//         if (!data.running) {
-//           setAutoRunning(false); setCapturing(false); setStartingAuto(false);
-//         }
-//       } catch {}
-//     }, 2000);
-//     return () => clearInterval(id);
-//   }, [autoRunning, count]);
-
-//   const singleCapture = async () => {
-//     setSingleBusy(true); setResult(null);
-//     setImage(null); setImageMode(null); setCameraActive(true);
-//     try {
-//       const res  = await fetch(`${API}/api/${mode}/capture-camera`, {
-//         method: "POST",
-//         headers: { "Content-Type": "application/json" },
-//         body: JSON.stringify({ user_id: user?.id || "guest" }),
-//       });
-//       const data = await res.json();
-//       setResult(data);
-//       if (data.success && data.filename) {
-//         setImage(data.image_b64 || `${API}/api/${mode}/image/${data.filename}?t=${Date.now()}`);
-//         setImageMode("camera");
-//         if (isGuest) pushGuestHistory({ ...data, mode, timestamp: Date.now() });
-//       }
-//     } catch {
-//       setResult({ success: false, error: "Camera capture failed" });
-//     } finally {
-//       setSingleBusy(false); setCameraActive(false);
-//     }
-//   };
-
-//   const startAuto = async () => {
-//     setStartingAuto(true);
-//     try {
-//       const res  = await fetch(`${API}/api/auto/start/${mode}`, {
-//         method: "POST",
-//         headers: { "Content-Type": "application/json" },
-//         body: JSON.stringify({ user_id: user?.id || "guest" }),
-//       });
-//       const data = await res.json();
-//       if (data.success) {
-//         setAutoRunning(true); setCapturing(true); setCameraActive(true);
-//         setCount(0); setImage(null); setImageMode(null); setResult(null);
-//       }
-//     } catch {}
-//     finally { setStartingAuto(false); }
-//   };
-
-//   const stopAuto = async () => {
-//     await fetch(`${API}/api/auto/stop/${mode}`, { method: "POST" });
-//     setAutoRunning(false); setCapturing(false); setCameraActive(false);
-//   };
-
-//   const dots = Array.from({ length: maxCap }, (_, i) => i < count);
-
-//   return (
-//     <div className="max-w-4xl mx-auto space-y-5">
-//       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm p-5 transition-colors duration-200 space-y-4">
-
-//         <div
-//           className={`border-2 border-dashed rounded-xl overflow-hidden min-h-52 flex items-center justify-center transition-colors duration-200 ${
-//             image ? "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40" :
-//             autoRunning ? "border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40" :
-//             "border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 cursor-pointer hover:border-emerald-500 dark:hover:border-emerald-500"
-//           }`}
-//           onClick={() => { if (!image && !autoRunning && !singleBusy) fileInputRef.current?.click(); }}
-//           onDrop={(e) => { e.preventDefault(); if (!autoRunning && !singleBusy) { const f = e.dataTransfer.files?.[0]; if (f?.type.startsWith("image/")) handleFile(f); } }}
-//           onDragOver={(e) => e.preventDefault()}
-//         >
-//           {image ? (
-//             <div className="relative w-full">
-//               <img src={image} alt="Preview" className="w-full max-h-80 object-contain" />
-//               {autoRunning && (
-//                 <div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded-full flex items-center gap-1.5">
-//                   <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-//                   #{count}
-//                 </div>
-//               )}
-//             </div>
-//           ) : (
-//             <div className="text-center py-6 px-4 pointer-events-none">
-//               {cameraActive || autoRunning ? (
-//                 <>
-//                   <Camera className="w-12 h-12 mx-auto mb-3 text-blue-400 dark:text-blue-500 animate-pulse" />
-//                   <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
-//                     {autoRunning ? "Capturing from Pi camera..." : "Capturing from camera..."}
-//                   </p>
-//                   {autoRunning && <p className="text-xs text-gray-400 dark:text-gray-600 mt-1">Auto mode active</p>}
-//                 </>
-//               ) : (
-//                 <>
-//                   <Upload className="w-12 h-12 mx-auto mb-3 text-gray-400 dark:text-gray-600" />
-//                   <p className="font-medium text-gray-700 dark:text-gray-300 mb-1">Click to upload or drag & drop</p>
-//                   <p className="text-sm text-gray-400 dark:text-gray-600">PNG, JPG up to 10 MB</p>
-//                 </>
-//               )}
-//             </div>
-//           )}
-//         </div>
-//         <input ref={fileInputRef} type="file" accept="image/*"
-//           onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} className="hidden" />
-
-//         {image && imageMode === "upload" && (
-//           <div className="flex gap-2">
-//             <button onClick={detectImage} disabled={detectBusy}
-//               className="flex-1 min-w-0 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 text-white font-medium py-2.5 rounded-lg flex items-center justify-center gap-2 text-sm transition-colors">
-//               {detectBusy
-//                 ? <><Loader2 className="w-4 h-4 animate-spin shrink-0" /><span className="truncate">Detecting...</span></>
-//                 : <><AlertTriangle className="w-4 h-4 shrink-0" /><span className="truncate">{mode === "animal" ? "Detect Threats" : "Detect Disease"}</span></>}
-//             </button>
-//             <button onClick={resetImage}
-//               className="px-4 py-2.5 rounded-lg text-sm bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 transition-colors shrink-0">
-//               Reset
-//             </button>
-//           </div>
-//         )}
-
-//         {image && imageMode === "camera" && !autoRunning && (
-//           <div className="flex justify-end">
-//             <button onClick={resetImage}
-//               className="px-4 py-2.5 rounded-lg text-sm bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 transition-colors">
-//               Reset
-//             </button>
-//           </div>
-//         )}
-
-//         <div className="flex items-center gap-2">
-//           <Camera className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-//           <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Camera Detection</p>
-//         </div>
-
-//         {/* FIX 6: flex-col on mobile so buttons stack and text wraps naturally */}
-//         {!autoRunning ? (
-//           <div className="flex flex-col sm:flex-row gap-2">
-//             <button onClick={singleCapture} disabled={singleBusy}
-//               className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 text-white font-medium py-3 rounded-lg flex items-center justify-center gap-2 text-sm transition-colors">
-//               {singleBusy
-//                 ? <><Loader2 className="w-4 h-4 animate-spin shrink-0" />Capturing...</>
-//                 : <><Camera className="w-4 h-4 shrink-0" />Capture from Camera</>}
-//             </button>
-//             <button onClick={startAuto} disabled={startingAuto}
-//               className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 text-white font-medium py-3 rounded-lg flex items-center justify-center gap-2 text-sm transition-colors">
-//               {startingAuto
-//                 ? <><Loader2 className="w-4 h-4 animate-spin shrink-0" />Starting...</>
-//                 : <>▶ Start Auto Capture</>}
-//             </button>
-//           </div>
-//         ) : (
-//           <div className="space-y-2">
-//             <div className="flex items-center justify-between text-xs px-0.5">
-//               <div className="flex items-center gap-1.5">
-//                 <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-//                 <span className="font-medium text-gray-700 dark:text-gray-200">Auto Running</span>
-//               </div>
-//               <span className="font-mono text-gray-500 dark:text-gray-400">{count}/{maxCap} · ~{(maxCap - count) * 30}s left</span>
-//             </div>
-//             <div className="flex gap-1.5">
-//               {dots.map((done, i) => (
-//                 <div key={i} className={`flex-1 h-1.5 rounded-full transition-all duration-500 ${
-//                   done ? "bg-emerald-500" : i === count && capturing ? "bg-blue-500 animate-pulse" : "bg-gray-200 dark:bg-gray-700"
-//                 }`} />
-//               ))}
-//             </div>
-//             <button onClick={stopAuto}
-//               className="w-full bg-red-600 hover:bg-red-700 text-white font-medium py-3 rounded-lg flex items-center justify-center gap-2 text-sm transition-colors">
-//               <Square className="w-4 h-4" /> Stop Auto Capture
-//             </button>
-//           </div>
-//         )}
-//       </div>
-
-//       {result && <ResultCard result={result} mode={mode} />}
-
-//       <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-5 transition-colors duration-200">
-//         <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-300 mb-3">
-//           {mode === "animal" ? "🐾 About the Animal Model" : "🌿 About the Plant Model"}
-//         </h3>
-//         <ul className="list-disc pl-5 space-y-1.5 text-sm text-blue-800 dark:text-blue-400">
-//           {mode === "animal" ? <>
-//             <li>Trained deep learning model on a multi-class animal dataset.</li>
-//             <li>Detects crop threats: birds, monkeys, cows, and wild animals.</li>
-//             <li>Processes images using computer vision on the Raspberry Pi 4.</li>
-//             <li>All results are saved to detection history for monitoring.</li>
-//           </> : <>
-//             <li>Trained on the PlantVillage dataset with 38 disease classes.</li>
-//             <li>Supports Apple, Corn, Grape, Tomato, Potato, Peach and more.</li>
-//             <li>Multi-stage pipeline: plant guard → disease classification.</li>
-//             <li>All results are saved to detection history for monitoring.</li>
-//           </>}
-//         </ul>
-//       </div>
-//     </div>
-//   );
-// }
-
-// export default function DetectionPage() {
-//   const [tab, setTab] = useState<"animal" | "plant">("animal");
-
-//   return (
-//     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 transition-colors duration-200 pb-12">
-//       {/* FIX 5: max-w-4xl mx-auto aligns heading with content below */}
-//       <div className="px-6 pt-6 pb-4 max-w-4xl mx-auto">
-//         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">AI Threat Detection</h1>
-//         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Detect animal threats and plant diseases</p>
-//       </div>
-//       <div className="px-6 mb-6 max-w-4xl mx-auto">
-//         <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-1 gap-1">
-//           <button onClick={() => setTab("animal")}
-//             className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-150 ${tab === "animal" ? "bg-green-600 text-white shadow-sm" : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"}`}>
-//             🐾 Animal Detection
-//           </button>
-//           <button onClick={() => setTab("plant")}
-//             className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-150 ${tab === "plant" ? "bg-green-600 text-white shadow-sm" : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"}`}>
-//             🌿 Plant Detection
-//           </button>
-//         </div>
-//       </div>
-//       <div className="px-6">
-//         <DetectionTab key={tab} mode={tab} />
-//       </div>
-//     </div>
-//   );
-// }
-
-
-
-
-
-
-
-
-
-
-
-
-
-// "use client";
-
-// import { useState, useRef, useEffect } from "react";
-// import { useAuth, pushGuestHistory } from "./AuthContext";
-// import { Camera, Upload, AlertTriangle, CheckCircle, Loader2, HelpCircle, Square, Bot } from "lucide-react";
-
-// const API = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000";
-
-// function ResultCard({ result, mode }: { result: any; mode: "animal" | "plant" }) {
-//   const msg = result?.message || result?.result || "";
-//   let s = {
-//     wrap:  "border-emerald-400 dark:border-emerald-600 bg-emerald-50 dark:bg-emerald-900/20",
-//     title: "text-emerald-800 dark:text-emerald-300",
-//     body:  "text-emerald-700 dark:text-emerald-400",
-//     icon:  <CheckCircle className="w-7 h-7 text-emerald-500 shrink-0" />,
-//     label: mode === "animal" ? "✅ All Clear" : "✅ Healthy Plant",
-//   };
-//   if (!result?.success) {
-//     s = { wrap: "border-amber-400 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20", title: "text-amber-800 dark:text-amber-300", body: "text-amber-700 dark:text-amber-400", icon: <AlertTriangle className="w-7 h-7 text-amber-500 shrink-0" />, label: "⚠️ Error" };
-//   } else if (mode === "animal") {
-//     if (msg.includes("✅ Threat") && msg.includes("Animal:"))
-//       s = { wrap: "border-red-400 dark:border-red-600 bg-red-50 dark:bg-red-900/20", title: "text-red-800 dark:text-red-300", body: "text-red-700 dark:text-red-400", icon: <AlertTriangle className="w-7 h-7 text-red-500 shrink-0" />, label: "⚠️ Threat Detected!" };
-//     else if (msg.includes("Human detected"))
-//       s = { wrap: "border-purple-300 dark:border-purple-600 bg-purple-50 dark:bg-purple-900/20", title: "text-purple-800 dark:text-purple-300", body: "text-purple-700 dark:text-purple-400", icon: <AlertTriangle className="w-7 h-7 text-purple-500 shrink-0" />, label: "👤 Human Detected" };
-//     else if (msg.includes("⚠"))
-//       s = { wrap: "border-amber-400 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20", title: "text-amber-800 dark:text-amber-300", body: "text-amber-700 dark:text-amber-400", icon: <AlertTriangle className="w-7 h-7 text-amber-500 shrink-0" />, label: "⚠️ Unclear" };
-//   } else {
-//     if (msg.includes("UNHEALTHY") || (msg.includes("Threat Detected") && !msg.includes("No Threat")))
-//       s = { wrap: "border-orange-400 dark:border-orange-600 bg-orange-50 dark:bg-orange-900/20", title: "text-orange-800 dark:text-orange-300", body: "text-orange-700 dark:text-orange-400", icon: <AlertTriangle className="w-7 h-7 text-orange-500 shrink-0" />, label: "🌿 Disease Detected" };
-//     else if (msg.includes("Animal image given"))
-//       s = { wrap: "border-red-400 dark:border-red-600 bg-red-50 dark:bg-red-900/20", title: "text-red-800 dark:text-red-300", body: "text-red-700 dark:text-red-400", icon: <AlertTriangle className="w-7 h-7 text-red-500 shrink-0" />, label: "⚠️ Animal Detected" };
-//     else if (msg.includes("Not a plant"))
-//       s = { wrap: "border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/60", title: "text-gray-700 dark:text-gray-300", body: "text-gray-600 dark:text-gray-400", icon: <HelpCircle className="w-7 h-7 text-gray-400 shrink-0" />, label: "❌ Not a Plant" };
-//     else if (msg.includes("UNCLEAR") || msg.includes("Unclear"))
-//       s = { wrap: "border-amber-400 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20", title: "text-amber-800 dark:text-amber-300", body: "text-amber-700 dark:text-amber-400", icon: <AlertTriangle className="w-7 h-7 text-amber-500 shrink-0" />, label: "⚠️ Unclear" };
-//     else if (msg.includes("Human detected"))
-//       s = { wrap: "border-purple-300 dark:border-purple-600 bg-purple-50 dark:bg-purple-900/20", title: "text-purple-800 dark:text-purple-300", body: "text-purple-700 dark:text-purple-400", icon: <AlertTriangle className="w-7 h-7 text-purple-500 shrink-0" />, label: "👤 Human Detected" };
-//   }
-//   return (
-//     <div className={`rounded-xl border-2 ${s.wrap} p-5 transition-colors duration-200`}>
-//       <div className="flex items-start gap-4">
-//         {s.icon}
-//         <div className="flex-1 min-w-0">
-//           <p className={`text-base font-bold mb-1 ${s.title}`}>{s.label}</p>
-//           <p className={`text-sm mb-2 ${s.body}`}>{msg || result?.error}</p>
-//           <div className="flex flex-wrap gap-3">
-//             {result?.confidence > 0 && (
-//               <div className="bg-white dark:bg-gray-900 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-//                 <p className="text-xs text-gray-500 dark:text-gray-400">Confidence</p>
-//                 <p className="text-sm font-semibold text-gray-900 dark:text-white">{result.confidence}%</p>
-//               </div>
-//             )}
-//             {result?.animal_type && result.animal_type !== "Unknown" && (
-//               <div className="bg-white dark:bg-gray-900 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-//                 <p className="text-xs text-gray-500 dark:text-gray-400">Animal</p>
-//                 <p className="text-sm font-semibold text-gray-900 dark:text-white capitalize">{result.animal_type}</p>
-//               </div>
-//             )}
-//           </div>
-//         </div>
-//       </div>
-//     </div>
-//   );
-// }
-
-// function DetectionTab({ mode }: { mode: "animal" | "plant" }) {
-//   const { user, isGuest } = useAuth();
-//   const [image,        setImage]        = useState<string | null>(null);
-//   const [imageMode,    setImageMode]    = useState<"upload" | "camera" | null>(null);
-//   const [cameraActive, setCameraActive] = useState(false);
-//   const [result,       setResult]       = useState<any>(null);
-//   const [detectBusy,   setDetectBusy]   = useState(false);
-//   const [singleBusy,   setSingleBusy]   = useState(false);
-//   const [startingAuto, setStartingAuto] = useState(false);
-//   const [autoRunning,  setAutoRunning]  = useState(false);
-//   const [count,        setCount]        = useState(0);
-//   const [capturing,    setCapturing]    = useState(false);
-//   const maxCap = 10;
-//   const fileInputRef = useRef<HTMLInputElement>(null);
-
-//   const handleFile = (file: File) => {
-//     const reader = new FileReader();
-//     reader.onloadend = () => { setImage(reader.result as string); setImageMode("upload"); setResult(null); };
-//     reader.readAsDataURL(file);
-//   };
-
-//   const detectImage = async () => {
-//     if (!image || imageMode !== "upload") return;
-//     setDetectBusy(true); setResult(null);
-//     const endpoint = mode === "animal" ? "detect-animal" : "detect-plant";
-//     try {
-//       const res = await fetch(`${API}/api/${mode}/${endpoint}`, {
-//         method: "POST", headers: { "Content-Type": "application/json" },
-//         body: JSON.stringify({ image_base64: image, user_id: user?.id || "guest" }),
-//       });
-//       const data = await res.json();
-//       setResult(data);
-//       if (isGuest && data.success) pushGuestHistory({ ...data, mode, timestamp: Date.now(), image_b64: data.image_b64 || image });
-//     } catch { setResult({ success: false, error: "Backend connection failed" }); }
-//     finally { setDetectBusy(false); }
-//   };
-
-//   const resetImage = () => {
-//     setImage(null); setImageMode(null); setResult(null);
-//     if (fileInputRef.current) fileInputRef.current.value = "";
-//   };
-
-//   useEffect(() => {
-//     fetch(`${API}/api/auto/status/${mode}`)
-//       .then(r => r.json())
-//       .then(s => {
-//         if (s.running && s.mode === mode) {
-//           setAutoRunning(true); setCount(s.count ?? 0);
-//           const imgSrc = s.image_b64 || s.last_result?.image_b64 || null;
-//           if (imgSrc) { setImage(imgSrc); setImageMode("camera"); }
-//           if (s.last_result) setResult(s.last_result);
-//         }
-//       }).catch(() => {});
-//   }, [mode]);
-
-//   useEffect(() => {
-//     if (!autoRunning) return;
-//     const id = setInterval(async () => {
-//       try {
-//         const res = await fetch(`${API}/api/auto/status/${mode}`);
-//         const data = await res.json();
-//         if (data.count > count) {
-//           setCount(data.count); setCapturing(false);
-//           if (data.last_result) {
-//             const imgSrc = data.image_b64 || data.last_result.image_b64 || null;
-//             if (imgSrc) { setImage(imgSrc); setImageMode("camera"); setCameraActive(false); }
-//             setResult(data.last_result);
-//             if (isGuest) pushGuestHistory({ ...data.last_result, mode, timestamp: Date.now(), image_b64: imgSrc || "" });
-//           }
-//         } else if (data.running) { setCapturing(true); }
-//         if (!data.running) { setAutoRunning(false); setCapturing(false); setStartingAuto(false); }
-//       } catch {}
-//     }, 2000);
-//     return () => clearInterval(id);
-//   }, [autoRunning, count]);
-
-//   // ── Animal: Pi cam capture (calls /capture-camera on Pi) ──
-//   const singleCaptureAnimal = async () => {
-//     setSingleBusy(true); setResult(null);
-//     setImage(null); setImageMode(null); setCameraActive(true);
-//     try {
-//       const res = await fetch(`${API}/api/animal/capture-camera`, {
-//         method: "POST", headers: { "Content-Type": "application/json" },
-//         body: JSON.stringify({ user_id: user?.id || "guest" }),
-//       });
-//       const data = await res.json();
-//       setResult(data);
-//       if (data.success) {
-//         setImage(data.image_b64 || `${API}/api/animal/image/${data.filename}?t=${Date.now()}`);
-//         setImageMode("camera");
-//         if (isGuest) pushGuestHistory({ ...data, mode: "animal", timestamp: Date.now() });
-//       }
-//     } catch { setResult({ success: false, error: "Bot camera capture failed" }); }
-//     finally { setSingleBusy(false); setCameraActive(false); }
-//   };
-
-//   // ── Plant: Browser/device camera capture ──
-//   const singleCapturePlant = async () => {
-//     setSingleBusy(true); setResult(null);
-//     setImage(null); setImageMode(null); setCameraActive(true);
-//     try {
-//       // Use browser getUserMedia to capture from device camera
-//       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-//       const video = document.createElement("video");
-//       video.srcObject = stream;
-//       video.setAttribute("playsinline", "true");
-//       await video.play();
-
-//       // Wait a moment for camera to adjust
-//       await new Promise(r => setTimeout(r, 500));
-
-//       const canvas = document.createElement("canvas");
-//       canvas.width  = video.videoWidth;
-//       canvas.height = video.videoHeight;
-//       canvas.getContext("2d")!.drawImage(video, 0, 0);
-
-//       // Stop stream
-//       stream.getTracks().forEach(t => t.stop());
-
-//       const imageBase64 = canvas.toDataURL("image/jpeg", 0.85);
-//       setImage(imageBase64);
-//       setImageMode("camera");
-
-//       // Send to Flask
-//       const res = await fetch(`${API}/api/plant/capture-camera`, {
-//         method: "POST", headers: { "Content-Type": "application/json" },
-//         body: JSON.stringify({ image_base64: imageBase64, user_id: user?.id || "guest" }),
-//       });
-//       const data = await res.json();
-//       setResult(data);
-//       if (data.success) {
-//         if (data.image_b64) setImage(data.image_b64);
-//         if (isGuest) pushGuestHistory({ ...data, mode: "plant", timestamp: Date.now() });
-//       }
-//     } catch (err: any) {
-//       setResult({ success: false, error: err?.message || "Camera access failed. Please allow camera permission." });
-//       setImage(null); setImageMode(null);
-//     }
-//     finally { setSingleBusy(false); setCameraActive(false); }
-//   };
-
-//   const startAuto = async () => {
-//     setStartingAuto(true);
-//     try {
-//       const res = await fetch(`${API}/api/auto/start/${mode}`, {
-//         method: "POST", headers: { "Content-Type": "application/json" },
-//         body: JSON.stringify({ user_id: user?.id || "guest" }),
-//       });
-//       const data = await res.json();
-//       if (data.success) {
-//         setAutoRunning(true); setCapturing(true); setCameraActive(true);
-//         setCount(0); setImage(null); setImageMode(null); setResult(null);
-//       }
-//     } catch {}
-//     finally { setStartingAuto(false); }
-//   };
-
-//   const stopAuto = async () => {
-//     await fetch(`${API}/api/auto/stop/${mode}`, { method: "POST" });
-//     setAutoRunning(false); setCapturing(false); setCameraActive(false);
-//   };
-
-//   const dots = Array.from({ length: maxCap }, (_, i) => i < count);
-
-//   return (
-//     <div className="max-w-4xl mx-auto space-y-5">
-//       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm p-5 transition-colors duration-200 space-y-4">
-
-//         <div
-//           className={`border-2 border-dashed rounded-xl overflow-hidden min-h-52 flex items-center justify-center transition-colors duration-200 ${
-//             image ? "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40" :
-//             autoRunning ? "border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40" :
-//             "border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 cursor-pointer hover:border-emerald-500 dark:hover:border-emerald-500"
-//           }`}
-//           onClick={() => { if (!image && !autoRunning && !singleBusy) fileInputRef.current?.click(); }}
-//           onDrop={(e) => { e.preventDefault(); if (!autoRunning && !singleBusy) { const f = e.dataTransfer.files?.[0]; if (f?.type.startsWith("image/")) handleFile(f); } }}
-//           onDragOver={(e) => e.preventDefault()}
-//         >
-//           {image ? (
-//             <div className="relative w-full">
-//               <img src={image} alt="Preview" className="w-full max-h-80 object-contain" />
-//               {autoRunning && (
-//                 <div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded-full flex items-center gap-1.5">
-//                   <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />#{count}
-//                 </div>
-//               )}
-//             </div>
-//           ) : (
-//             <div className="text-center py-6 px-4 pointer-events-none">
-//               {cameraActive || autoRunning ? (
-//                 <>
-//                   <Camera className="w-12 h-12 mx-auto mb-3 text-blue-400 dark:text-blue-500 animate-pulse" />
-//                   <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
-//                     {autoRunning ? "Capturing from Pi camera..." : mode === "animal" ? "Capturing from bot camera..." : "Opening device camera..."}
-//                   </p>
-//                   {autoRunning && <p className="text-xs text-gray-400 dark:text-gray-600 mt-1">Auto mode active</p>}
-//                 </>
-//               ) : (
-//                 <>
-//                   <Upload className="w-12 h-12 mx-auto mb-3 text-gray-400 dark:text-gray-600" />
-//                   <p className="font-medium text-gray-700 dark:text-gray-300 mb-1">Click to upload or drag & drop</p>
-//                   <p className="text-sm text-gray-400 dark:text-gray-600">PNG, JPG up to 10 MB</p>
-//                 </>
-//               )}
-//             </div>
-//           )}
-//         </div>
-//         <input ref={fileInputRef} type="file" accept="image/*"
-//           onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} className="hidden" />
-
-//         {image && imageMode === "upload" && (
-//           <div className="flex gap-2">
-//             <button onClick={detectImage} disabled={detectBusy}
-//               className="flex-1 min-w-0 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 text-white font-medium py-2.5 rounded-lg flex items-center justify-center gap-2 text-sm transition-colors">
-//               {detectBusy
-//                 ? <><Loader2 className="w-4 h-4 animate-spin shrink-0" /><span className="truncate">Detecting...</span></>
-//                 : <><AlertTriangle className="w-4 h-4 shrink-0" /><span className="truncate">{mode === "animal" ? "Detect Threats" : "Detect Disease"}</span></>}
-//             </button>
-//             <button onClick={resetImage}
-//               className="px-4 py-2.5 rounded-lg text-sm bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 transition-colors shrink-0">
-//               Reset
-//             </button>
-//           </div>
-//         )}
-
-//         {image && imageMode === "camera" && !autoRunning && (
-//           <div className="flex justify-end">
-//             <button onClick={resetImage}
-//               className="px-4 py-2.5 rounded-lg text-sm bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 transition-colors">
-//               Reset
-//             </button>
-//           </div>
-//         )}
-
-//         <div className="flex items-center gap-2">
-//           <Camera className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-//           <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Camera Detection</p>
-//         </div>
-
-//         {!autoRunning ? (
-//           <div className="flex flex-col sm:flex-row gap-2">
-//             {/* Capture button — Bot cam for animal, Device cam for plant */}
-//             <button
-//               onClick={mode === "animal" ? singleCaptureAnimal : singleCapturePlant}
-//               disabled={singleBusy}
-//               className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 text-white font-medium py-3 rounded-lg flex items-center justify-center gap-2 text-sm transition-colors">
-//               {singleBusy
-//                 ? <><Loader2 className="w-4 h-4 animate-spin shrink-0" />Capturing...</>
-//                 : mode === "animal"
-//                   ? <><Bot className="w-4 h-4 shrink-0" />Capture from Camera (Bot)</>
-//                   : <><Camera className="w-4 h-4 shrink-0" />Capture from Camera (Device)</>}
-//             </button>
-//             <button onClick={startAuto} disabled={startingAuto}
-//               className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 text-white font-medium py-3 rounded-lg flex items-center justify-center gap-2 text-sm transition-colors">
-//               {startingAuto
-//                 ? <><Loader2 className="w-4 h-4 animate-spin shrink-0" />Starting...</>
-//                 : <>▶ Start Auto Capture</>}
-//             </button>
-//           </div>
-//         ) : (
-//           <div className="space-y-2">
-//             <div className="flex items-center justify-between text-xs px-0.5">
-//               <div className="flex items-center gap-1.5">
-//                 <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-//                 <span className="font-medium text-gray-700 dark:text-gray-200">Auto Running</span>
-//               </div>
-//               <span className="font-mono text-gray-500 dark:text-gray-400">{count}/{maxCap} · ~{(maxCap - count) * 30}s left</span>
-//             </div>
-//             <div className="flex gap-1.5">
-//               {dots.map((done, i) => (
-//                 <div key={i} className={`flex-1 h-1.5 rounded-full transition-all duration-500 ${
-//                   done ? "bg-emerald-500" : i === count && capturing ? "bg-blue-500 animate-pulse" : "bg-gray-200 dark:bg-gray-700"
-//                 }`} />
-//               ))}
-//             </div>
-//             <button onClick={stopAuto}
-//               className="w-full bg-red-600 hover:bg-red-700 text-white font-medium py-3 rounded-lg flex items-center justify-center gap-2 text-sm transition-colors">
-//               <Square className="w-4 h-4" /> Stop Auto Capture
-//             </button>
-//           </div>
-//         )}
-//       </div>
-
-//       {result && <ResultCard result={result} mode={mode} />}
-
-//       <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-5 transition-colors duration-200">
-//         <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-300 mb-3">
-//           {mode === "animal" ? "🐾 About the Animal Model" : "🌿 About the Plant Model"}
-//         </h3>
-//         <ul className="list-disc pl-5 space-y-1.5 text-sm text-blue-800 dark:text-blue-400">
-//           {mode === "animal" ? <>
-//             <li>Trained deep learning model on a multi-class animal dataset.</li>
-//             <li>Detects crop threats: birds, monkeys, cows, and wild animals.</li>
-//             <li>Processes images using computer vision on the Raspberry Pi 4.</li>
-//             <li>All results are saved to detection history for monitoring.</li>
-//           </> : <>
-//             <li>Trained on the PlantVillage dataset with 38 disease classes.</li>
-//             <li>Supports Apple, Corn, Grape, Tomato, Potato, Peach and more.</li>
-//             <li>Multi-stage pipeline: plant guard → disease classification.</li>
-//             <li>All results are saved to detection history for monitoring.</li>
-//           </>}
-//         </ul>
-//       </div>
-//     </div>
-//   );
-// }
-
-// export default function DetectionPage() {
-//   const [tab, setTab] = useState<"animal" | "plant">("animal");
-//   return (
-//     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 transition-colors duration-200 pb-12">
-//       <div className="px-6 pt-6 pb-4 max-w-4xl mx-auto">
-//         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">AI Threat Detection</h1>
-//         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Detect animal threats and plant diseases</p>
-//       </div>
-//       <div className="px-6 mb-6 max-w-4xl mx-auto">
-//         <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-1 gap-1">
-//           <button onClick={() => setTab("animal")}
-//             className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-150 ${tab === "animal" ? "bg-green-600 text-white shadow-sm" : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"}`}>
-//             🐾 Animal Detection
-//           </button>
-//           <button onClick={() => setTab("plant")}
-//             className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-150 ${tab === "plant" ? "bg-green-600 text-white shadow-sm" : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"}`}>
-//             🌿 Plant Detection
-//           </button>
-//         </div>
-//       </div>
-//       <div className="px-6">
-//         <DetectionTab key={tab} mode={tab} />
-//       </div>
-//     </div>
-//   );
-// }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// "use client";
-
-// import { useState, useRef, useEffect } from "react";
-// import { useAuth, pushGuestHistory } from "./AuthContext";
-// import { Camera, Upload, AlertTriangle, CheckCircle, Loader2, HelpCircle, Square, Bot } from "lucide-react";
-
-// const API = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000";
-
-// function ResultCard({ result, mode }: { result: any; mode: "animal" | "plant" }) {
-//   const msg = result?.message || result?.result || "";
-//   let s = {
-//     wrap:  "border-emerald-400 dark:border-emerald-600 bg-emerald-50 dark:bg-emerald-900/20",
-//     title: "text-emerald-800 dark:text-emerald-300",
-//     body:  "text-emerald-700 dark:text-emerald-400",
-//     icon:  <CheckCircle className="w-7 h-7 text-emerald-500 shrink-0" />,
-//     label: mode === "animal" ? "✅ All Clear" : "✅ Healthy Plant",
-//   };
-//   if (!result?.success) {
-//     s = { wrap: "border-amber-400 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20", title: "text-amber-800 dark:text-amber-300", body: "text-amber-700 dark:text-amber-400", icon: <AlertTriangle className="w-7 h-7 text-amber-500 shrink-0" />, label: "⚠️ Error" };
-//   } else if (mode === "animal") {
-//     if (msg.includes("✅ Threat") && msg.includes("Animal:"))
-//       s = { wrap: "border-red-400 dark:border-red-600 bg-red-50 dark:bg-red-900/20", title: "text-red-800 dark:text-red-300", body: "text-red-700 dark:text-red-400", icon: <AlertTriangle className="w-7 h-7 text-red-500 shrink-0" />, label: "⚠️ Threat Detected!" };
-//     else if (msg.includes("Human detected"))
-//       s = { wrap: "border-purple-300 dark:border-purple-600 bg-purple-50 dark:bg-purple-900/20", title: "text-purple-800 dark:text-purple-300", body: "text-purple-700 dark:text-purple-400", icon: <AlertTriangle className="w-7 h-7 text-purple-500 shrink-0" />, label: "👤 Human Detected" };
-//     else if (msg.includes("⚠"))
-//       s = { wrap: "border-amber-400 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20", title: "text-amber-800 dark:text-amber-300", body: "text-amber-700 dark:text-amber-400", icon: <AlertTriangle className="w-7 h-7 text-amber-500 shrink-0" />, label: "⚠️ Unclear" };
-//   } else {
-//     if (msg.includes("UNHEALTHY") || (msg.includes("Threat Detected") && !msg.includes("No Threat")))
-//       s = { wrap: "border-orange-400 dark:border-orange-600 bg-orange-50 dark:bg-orange-900/20", title: "text-orange-800 dark:text-orange-300", body: "text-orange-700 dark:text-orange-400", icon: <AlertTriangle className="w-7 h-7 text-orange-500 shrink-0" />, label: "🌿 Disease Detected" };
-//     else if (msg.includes("Animal image given"))
-//       s = { wrap: "border-red-400 dark:border-red-600 bg-red-50 dark:bg-red-900/20", title: "text-red-800 dark:text-red-300", body: "text-red-700 dark:text-red-400", icon: <AlertTriangle className="w-7 h-7 text-red-500 shrink-0" />, label: "⚠️ Animal Detected" };
-//     else if (msg.includes("Not a plant"))
-//       s = { wrap: "border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/60", title: "text-gray-700 dark:text-gray-300", body: "text-gray-600 dark:text-gray-400", icon: <HelpCircle className="w-7 h-7 text-gray-400 shrink-0" />, label: "❌ Not a Plant" };
-//     else if (msg.includes("UNCLEAR") || msg.includes("Unclear"))
-//       s = { wrap: "border-amber-400 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20", title: "text-amber-800 dark:text-amber-300", body: "text-amber-700 dark:text-amber-400", icon: <AlertTriangle className="w-7 h-7 text-amber-500 shrink-0" />, label: "⚠️ Unclear" };
-//     else if (msg.includes("Human detected"))
-//       s = { wrap: "border-purple-300 dark:border-purple-600 bg-purple-50 dark:bg-purple-900/20", title: "text-purple-800 dark:text-purple-300", body: "text-purple-700 dark:text-purple-400", icon: <AlertTriangle className="w-7 h-7 text-purple-500 shrink-0" />, label: "👤 Human Detected" };
-//   }
-//   return (
-//     <div className={`rounded-xl border-2 ${s.wrap} p-5 transition-colors duration-200`}>
-//       <div className="flex items-start gap-4">
-//         {s.icon}
-//         <div className="flex-1 min-w-0">
-//           <p className={`text-base font-bold mb-1 ${s.title}`}>{s.label}</p>
-//           <p className={`text-sm mb-2 ${s.body}`}>{msg || result?.error}</p>
-//           <div className="flex flex-wrap gap-3">
-//             {result?.confidence > 0 && (
-//               <div className="bg-white dark:bg-gray-900 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-//                 <p className="text-xs text-gray-500 dark:text-gray-400">Confidence</p>
-//                 <p className="text-sm font-semibold text-gray-900 dark:text-white">{result.confidence}%</p>
-//               </div>
-//             )}
-//             {result?.animal_type && result.animal_type !== "Unknown" && (
-//               <div className="bg-white dark:bg-gray-900 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-//                 <p className="text-xs text-gray-500 dark:text-gray-400">Animal</p>
-//                 <p className="text-sm font-semibold text-gray-900 dark:text-white capitalize">{result.animal_type}</p>
-//               </div>
-//             )}
-//           </div>
-//         </div>
-//       </div>
-//     </div>
-//   );
-// }
-
-// function DetectionTab({ mode }: { mode: "animal" | "plant" }) {
-//   const { user, isGuest } = useAuth();
-//   const [image,        setImage]        = useState<string | null>(null);
-//   const [imageMode,    setImageMode]    = useState<"upload" | "camera" | null>(null);
-//   const [cameraActive, setCameraActive] = useState(false);
-//   const [result,       setResult]       = useState<any>(null);
-//   const [detectBusy,   setDetectBusy]   = useState(false);
-//   const [singleBusy,   setSingleBusy]   = useState(false);
-//   const [startingAuto, setStartingAuto] = useState(false);
-//   const [autoRunning,  setAutoRunning]  = useState(false);
-//   const [count,        setCount]        = useState(0);
-//   const [capturing,    setCapturing]    = useState(false);
-//   const maxCap = 10;
-//   const fileInputRef = useRef<HTMLInputElement>(null);
-
-//   const handleFile = (file: File) => {
-//     const reader = new FileReader();
-//     reader.onloadend = () => { setImage(reader.result as string); setImageMode("upload"); setResult(null); };
-//     reader.readAsDataURL(file);
-//   };
-
-//   const detectImage = async () => {
-//     if (!image || imageMode !== "upload") return;
-//     setDetectBusy(true); setResult(null);
-//     const endpoint = mode === "animal" ? "detect-animal" : "detect-plant";
-//     try {
-//       const res = await fetch(`${API}/api/${mode}/${endpoint}`, {
-//         method: "POST", headers: { "Content-Type": "application/json" },
-//         body: JSON.stringify({ image_base64: image, user_id: user?.id || "guest" }),
-//       });
-//       const data = await res.json();
-//       setResult(data);
-//       if (isGuest && data.success) pushGuestHistory({ ...data, mode, timestamp: Date.now(), image_b64: data.image_b64 || image });
-//     } catch { setResult({ success: false, error: "Backend connection failed" }); }
-//     finally { setDetectBusy(false); }
-//   };
-
-//   const resetImage = () => {
-//     setImage(null); setImageMode(null); setResult(null);
-//     if (fileInputRef.current) fileInputRef.current.value = "";
-//   };
-
-//   useEffect(() => {
-//     fetch(`${API}/api/auto/status/${mode}`)
-//       .then(r => r.json())
-//       .then(s => {
-//         if (s.running && s.mode === mode) {
-//           setAutoRunning(true); setCount(s.count ?? 0);
-//           const imgSrc = s.image_b64 || s.last_result?.image_b64 || null;
-//           if (imgSrc) { setImage(imgSrc); setImageMode("camera"); }
-//           if (s.last_result) setResult(s.last_result);
-//         }
-//       }).catch(() => {});
-//   }, [mode]);
-
-//   useEffect(() => {
-//     if (!autoRunning) return;
-//     const id = setInterval(async () => {
-//       try {
-//         const res = await fetch(`${API}/api/auto/status/${mode}`);
-//         const data = await res.json();
-//         if (data.count > count) {
-//           setCount(data.count); setCapturing(false);
-//           if (data.last_result) {
-//             const imgSrc = data.image_b64 || data.last_result.image_b64 || null;
-//             if (imgSrc) { setImage(imgSrc); setImageMode("camera"); setCameraActive(false); }
-//             setResult(data.last_result);
-//             if (isGuest) pushGuestHistory({ ...data.last_result, mode, timestamp: Date.now(), image_b64: imgSrc || "" });
-//           }
-//         } else if (data.running) { setCapturing(true); }
-//         if (!data.running) { setAutoRunning(false); setCapturing(false); setStartingAuto(false); }
-//       } catch {}
-//     }, 2000);
-//     return () => clearInterval(id);
-//   }, [autoRunning, count]);
-
-//   // ── Animal: Pi cam capture (calls /capture-camera on Pi) ──
-//   const singleCaptureAnimal = async () => {
-//     setSingleBusy(true); setResult(null);
-//     setImage(null); setImageMode(null); setCameraActive(true);
-//     try {
-//       const res = await fetch(`${API}/api/animal/capture-camera`, {
-//         method: "POST", headers: { "Content-Type": "application/json" },
-//         body: JSON.stringify({ user_id: user?.id || "guest" }),
-//       });
-//       const data = await res.json();
-//       setResult(data);
-//       if (data.success) {
-//         setImage(data.image_b64 || `${API}/api/animal/image/${data.filename}?t=${Date.now()}`);
-//         setImageMode("camera");
-//         if (isGuest) pushGuestHistory({ ...data, mode: "animal", timestamp: Date.now() });
-//       }
-//     } catch { setResult({ success: false, error: "Bot camera capture failed" }); }
-//     finally { setSingleBusy(false); setCameraActive(false); }
-//   };
-
-//   // ── Plant: Browser/device camera capture ──
-//   const singleCapturePlant = async () => {
-//     setSingleBusy(true); setResult(null);
-//     setImage(null); setImageMode(null); setCameraActive(true);
-//     try {
-//       // getUserMedia requires HTTPS or localhost — check first
-//       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-//         setResult({ success: false, error: "Camera not available on HTTP. Please use localhost or connect via HTTPS." });
-//         setSingleBusy(false); setCameraActive(false);
-//         return;
-//       }
-//       // Use browser getUserMedia to capture from device camera
-//       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-//       const video = document.createElement("video");
-//       video.srcObject = stream;
-//       video.setAttribute("playsinline", "true");
-//       await video.play();
-
-//       // Wait a moment for camera to adjust
-//       await new Promise(r => setTimeout(r, 500));
-
-//       const canvas = document.createElement("canvas");
-//       canvas.width  = video.videoWidth;
-//       canvas.height = video.videoHeight;
-//       canvas.getContext("2d")!.drawImage(video, 0, 0);
-
-//       // Stop stream
-//       stream.getTracks().forEach(t => t.stop());
-
-//       const imageBase64 = canvas.toDataURL("image/jpeg", 0.85);
-//       setImage(imageBase64);
-//       setImageMode("camera");
-
-//       // Send to Flask
-//       const res = await fetch(`${API}/api/plant/capture-camera`, {
-//         method: "POST", headers: { "Content-Type": "application/json" },
-//         body: JSON.stringify({ image_base64: imageBase64, user_id: user?.id || "guest" }),
-//       });
-//       const data = await res.json();
-//       setResult(data);
-//       if (data.success) {
-//         if (data.image_b64) setImage(data.image_b64);
-//         if (isGuest) pushGuestHistory({ ...data, mode: "plant", timestamp: Date.now() });
-//       }
-//     } catch (err: any) {
-//       setResult({ success: false, error: err?.message || "Camera access failed. Please allow camera permission." });
-//       setImage(null); setImageMode(null);
-//     }
-//     finally { setSingleBusy(false); setCameraActive(false); }
-//   };
-
-//   const startAuto = async () => {
-//     setStartingAuto(true);
-//     try {
-//       const res = await fetch(`${API}/api/auto/start/${mode}`, {
-//         method: "POST", headers: { "Content-Type": "application/json" },
-//         body: JSON.stringify({ user_id: user?.id || "guest" }),
-//       });
-//       const data = await res.json();
-//       if (data.success) {
-//         setAutoRunning(true); setCapturing(true); setCameraActive(true);
-//         setCount(0); setImage(null); setImageMode(null); setResult(null);
-//       }
-//     } catch {}
-//     finally { setStartingAuto(false); }
-//   };
-
-//   const stopAuto = async () => {
-//     await fetch(`${API}/api/auto/stop/${mode}`, { method: "POST" });
-//     setAutoRunning(false); setCapturing(false); setCameraActive(false);
-//   };
-
-//   const dots = Array.from({ length: maxCap }, (_, i) => i < count);
-
-//   return (
-//     <div className="max-w-4xl mx-auto space-y-5">
-//       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm p-5 transition-colors duration-200 space-y-4">
-
-//         <div
-//           className={`border-2 border-dashed rounded-xl overflow-hidden min-h-52 flex items-center justify-center transition-colors duration-200 ${
-//             image ? "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40" :
-//             autoRunning ? "border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40" :
-//             "border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 cursor-pointer hover:border-emerald-500 dark:hover:border-emerald-500"
-//           }`}
-//           onClick={() => { if (!image && !autoRunning && !singleBusy) fileInputRef.current?.click(); }}
-//           onDrop={(e) => { e.preventDefault(); if (!autoRunning && !singleBusy) { const f = e.dataTransfer.files?.[0]; if (f?.type.startsWith("image/")) handleFile(f); } }}
-//           onDragOver={(e) => e.preventDefault()}
-//         >
-//           {image ? (
-//             <div className="relative w-full">
-//               <img src={image} alt="Preview" className="w-full max-h-80 object-contain" />
-//               {autoRunning && (
-//                 <div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded-full flex items-center gap-1.5">
-//                   <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />#{count}
-//                 </div>
-//               )}
-//             </div>
-//           ) : (
-//             <div className="text-center py-6 px-4 pointer-events-none">
-//               {cameraActive || autoRunning ? (
-//                 <>
-//                   <Camera className="w-12 h-12 mx-auto mb-3 text-blue-400 dark:text-blue-500 animate-pulse" />
-//                   <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
-//                     {autoRunning ? "Capturing from Pi camera..." : mode === "animal" ? "Capturing from bot camera..." : "Opening device camera..."}
-//                   </p>
-//                   {autoRunning && <p className="text-xs text-gray-400 dark:text-gray-600 mt-1">Auto mode active</p>}
-//                 </>
-//               ) : (
-//                 <>
-//                   <Upload className="w-12 h-12 mx-auto mb-3 text-gray-400 dark:text-gray-600" />
-//                   <p className="font-medium text-gray-700 dark:text-gray-300 mb-1">Click to upload or drag & drop</p>
-//                   <p className="text-sm text-gray-400 dark:text-gray-600">PNG, JPG up to 10 MB</p>
-//                 </>
-//               )}
-//             </div>
-//           )}
-//         </div>
-//         <input ref={fileInputRef} type="file" accept="image/*"
-//           onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} className="hidden" />
-
-//         {image && imageMode === "upload" && (
-//           <div className="flex gap-2">
-//             <button onClick={detectImage} disabled={detectBusy}
-//               className="flex-1 min-w-0 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 text-white font-medium py-2.5 rounded-lg flex items-center justify-center gap-2 text-sm transition-colors">
-//               {detectBusy
-//                 ? <><Loader2 className="w-4 h-4 animate-spin shrink-0" /><span className="truncate">Detecting...</span></>
-//                 : <><AlertTriangle className="w-4 h-4 shrink-0" /><span className="truncate">{mode === "animal" ? "Detect Threats" : "Detect Disease"}</span></>}
-//             </button>
-//             <button onClick={resetImage}
-//               className="px-4 py-2.5 rounded-lg text-sm bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 transition-colors shrink-0">
-//               Reset
-//             </button>
-//           </div>
-//         )}
-
-//         {image && imageMode === "camera" && !autoRunning && (
-//           <div className="flex justify-end">
-//             <button onClick={resetImage}
-//               className="px-4 py-2.5 rounded-lg text-sm bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 transition-colors">
-//               Reset
-//             </button>
-//           </div>
-//         )}
-
-//         <div className="flex items-center gap-2">
-//           <Camera className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-//           <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Camera Detection</p>
-//         </div>
-
-//         {!autoRunning ? (
-//           <div className="flex flex-col sm:flex-row gap-2">
-//             {/* Capture button — Bot cam for animal, Device cam for plant */}
-//             <button
-//               onClick={mode === "animal" ? singleCaptureAnimal : singleCapturePlant}
-//               disabled={singleBusy}
-//               className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 text-white font-medium py-3 rounded-lg flex items-center justify-center gap-2 text-sm transition-colors">
-//               {singleBusy
-//                 ? <><Loader2 className="w-4 h-4 animate-spin shrink-0" />Capturing...</>
-//                 : mode === "animal"
-//                   ? <><Bot className="w-4 h-4 shrink-0" />Capture from Camera (Bot)</>
-//                   : <><Camera className="w-4 h-4 shrink-0" />Capture from Camera (Device)</>}
-//             </button>
-//             <button onClick={startAuto} disabled={startingAuto}
-//               className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 text-white font-medium py-3 rounded-lg flex items-center justify-center gap-2 text-sm transition-colors">
-//               {startingAuto
-//                 ? <><Loader2 className="w-4 h-4 animate-spin shrink-0" />Starting...</>
-//                 : <>▶ Start Auto Capture</>}
-//             </button>
-//           </div>
-//         ) : (
-//           <div className="space-y-2">
-//             <div className="flex items-center justify-between text-xs px-0.5">
-//               <div className="flex items-center gap-1.5">
-//                 <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-//                 <span className="font-medium text-gray-700 dark:text-gray-200">Auto Running</span>
-//               </div>
-//               <span className="font-mono text-gray-500 dark:text-gray-400">{count}/{maxCap} · ~{(maxCap - count) * 30}s left</span>
-//             </div>
-//             <div className="flex gap-1.5">
-//               {dots.map((done, i) => (
-//                 <div key={i} className={`flex-1 h-1.5 rounded-full transition-all duration-500 ${
-//                   done ? "bg-emerald-500" : i === count && capturing ? "bg-blue-500 animate-pulse" : "bg-gray-200 dark:bg-gray-700"
-//                 }`} />
-//               ))}
-//             </div>
-//             <button onClick={stopAuto}
-//               className="w-full bg-red-600 hover:bg-red-700 text-white font-medium py-3 rounded-lg flex items-center justify-center gap-2 text-sm transition-colors">
-//               <Square className="w-4 h-4" /> Stop Auto Capture
-//             </button>
-//           </div>
-//         )}
-//       </div>
-
-//       {result && <ResultCard result={result} mode={mode} />}
-
-//       <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-5 transition-colors duration-200">
-//         <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-300 mb-3">
-//           {mode === "animal" ? "🐾 About the Animal Model" : "🌿 About the Plant Model"}
-//         </h3>
-//         <ul className="list-disc pl-5 space-y-1.5 text-sm text-blue-800 dark:text-blue-400">
-//           {mode === "animal" ? <>
-//             <li>Trained deep learning model on a multi-class animal dataset.</li>
-//             <li>Detects crop threats: birds, monkeys, cows, and wild animals.</li>
-//             <li>Processes images using computer vision on the Raspberry Pi 4.</li>
-//             <li>All results are saved to detection history for monitoring.</li>
-//           </> : <>
-//             <li>Trained on the PlantVillage dataset with 38 disease classes.</li>
-//             <li>Supports Apple, Corn, Grape, Tomato, Potato, Peach and more.</li>
-//             <li>Multi-stage pipeline: plant guard → disease classification.</li>
-//             <li>All results are saved to detection history for monitoring.</li>
-//           </>}
-//         </ul>
-//       </div>
-//     </div>
-//   );
-// }
-
-// export default function DetectionPage() {
-//   const [tab, setTab] = useState<"animal" | "plant">("animal");
-//   return (
-//     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 transition-colors duration-200 pb-12">
-//       <div className="px-6 pt-6 pb-4 max-w-4xl mx-auto">
-//         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">AI Threat Detection</h1>
-//         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Detect animal threats and plant diseases</p>
-//       </div>
-//       <div className="px-6 mb-6 max-w-4xl mx-auto">
-//         <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-1 gap-1">
-//           <button onClick={() => setTab("animal")}
-//             className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-150 ${tab === "animal" ? "bg-green-600 text-white shadow-sm" : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"}`}>
-//             🐾 Animal Detection
-//           </button>
-//           <button onClick={() => setTab("plant")}
-//             className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-150 ${tab === "plant" ? "bg-green-600 text-white shadow-sm" : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"}`}>
-//             🌿 Plant Detection
-//           </button>
-//         </div>
-//       </div>
-//       <div className="px-6">
-//         <DetectionTab key={tab} mode={tab} />
-//       </div>
-//     </div>
-//   );
-// }
-
-
-
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { useAuth, pushGuestHistory } from "./AuthContext";
-import { Camera, Upload, AlertTriangle, CheckCircle, Loader2, HelpCircle, Square, Bot } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  AlertTriangle,
+  Bot,
+  Camera,
+  CheckCircle,
+  Flower2,
+  HelpCircle,
+  Loader2,
+  Square,
+  Upload,
+} from "lucide-react";
+
+import { pushGuestHistory, useAuth } from "./AuthContext";
 import { apiFetch, getApiUrl } from "@/lib/api";
 
-function ResultCard({ result, mode }: { result: any; mode: "animal" | "plant" }) {
-  const msg = result?.message || result?.result || "";
-  let s = {
-    wrap:  "border-emerald-400 dark:border-emerald-600 bg-emerald-50 dark:bg-emerald-900/20",
+type Mode = "animal" | "plant";
+
+type DetectionStatus = {
+  mode: Mode;
+  running: boolean;
+  completed: boolean;
+  started_at?: string | null;
+  ends_at?: string | null;
+  completed_at?: string | null;
+  remaining_seconds: number;
+  detection_count: number;
+  last_result?: any;
+  last_detection?: any;
+  last_inference_at?: string | null;
+  error?: string | null;
+  stream_active: boolean;
+  active_modes: string[];
+  frame_skip: number;
+  duration_seconds: number;
+};
+
+type AllStatuses = {
+  animal: DetectionStatus;
+  plant: DetectionStatus;
+  stream_active: boolean;
+};
+
+function formatRemaining(seconds: number) {
+  const safe = Math.max(0, seconds || 0);
+  const mins = Math.floor(safe / 60);
+  const secs = safe % 60;
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
+
+function ResultCard({ result, mode }: { result: any; mode: Mode }) {
+  const msg = result?.message || result?.result || result?.error || "";
+  let style = {
+    wrap: "border-emerald-400 bg-emerald-50 dark:border-emerald-600 dark:bg-emerald-900/20",
     title: "text-emerald-800 dark:text-emerald-300",
-    body:  "text-emerald-700 dark:text-emerald-400",
-    icon:  <CheckCircle className="w-7 h-7 text-emerald-500 shrink-0" />,
-    label: mode === "animal" ? "✅ All Clear" : "✅ Healthy Plant",
+    body: "text-emerald-700 dark:text-emerald-400",
+    icon: <CheckCircle className="h-7 w-7 shrink-0 text-emerald-500" />,
+    label: mode === "animal" ? "All clear" : "Healthy plant",
   };
-  if (!result?.success) {
-    s = { wrap: "border-amber-400 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20", title: "text-amber-800 dark:text-amber-300", body: "text-amber-700 dark:text-amber-400", icon: <AlertTriangle className="w-7 h-7 text-amber-500 shrink-0" />, label: "⚠️ Error" };
+
+  if (result?.success === false) {
+    style = {
+      wrap: "border-amber-400 bg-amber-50 dark:border-amber-600 dark:bg-amber-900/20",
+      title: "text-amber-800 dark:text-amber-300",
+      body: "text-amber-700 dark:text-amber-400",
+      icon: <AlertTriangle className="h-7 w-7 shrink-0 text-amber-500" />,
+      label: "Detection error",
+    };
   } else if (mode === "animal") {
-    if (msg.includes("✅ Threat") && msg.includes("Animal:"))
-      s = { wrap: "border-red-400 dark:border-red-600 bg-red-50 dark:bg-red-900/20", title: "text-red-800 dark:text-red-300", body: "text-red-700 dark:text-red-400", icon: <AlertTriangle className="w-7 h-7 text-red-500 shrink-0" />, label: "⚠️ Threat Detected!" };
-    else if (msg.includes("Human detected"))
-      s = { wrap: "border-purple-300 dark:border-purple-600 bg-purple-50 dark:bg-purple-900/20", title: "text-purple-800 dark:text-purple-300", body: "text-purple-700 dark:text-purple-400", icon: <AlertTriangle className="w-7 h-7 text-purple-500 shrink-0" />, label: "👤 Human Detected" };
-    else if (msg.includes("⚠"))
-      s = { wrap: "border-amber-400 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20", title: "text-amber-800 dark:text-amber-300", body: "text-amber-700 dark:text-amber-400", icon: <AlertTriangle className="w-7 h-7 text-amber-500 shrink-0" />, label: "⚠️ Unclear" };
+    if (result?.threat_detected) {
+      style = {
+        wrap: "border-red-400 bg-red-50 dark:border-red-600 dark:bg-red-900/20",
+        title: "text-red-800 dark:text-red-300",
+        body: "text-red-700 dark:text-red-400",
+        icon: <AlertTriangle className="h-7 w-7 shrink-0 text-red-500" />,
+        label: "Animal threat detected",
+      };
+    } else if (msg.toLowerCase().includes("human")) {
+      style = {
+        wrap: "border-purple-300 bg-purple-50 dark:border-purple-600 dark:bg-purple-900/20",
+        title: "text-purple-800 dark:text-purple-300",
+        body: "text-purple-700 dark:text-purple-400",
+        icon: <AlertTriangle className="h-7 w-7 shrink-0 text-purple-500" />,
+        label: "Human detected",
+      };
+    } else if (msg.toLowerCase().includes("unclear")) {
+      style = {
+        wrap: "border-amber-400 bg-amber-50 dark:border-amber-600 dark:bg-amber-900/20",
+        title: "text-amber-800 dark:text-amber-300",
+        body: "text-amber-700 dark:text-amber-400",
+        icon: <HelpCircle className="h-7 w-7 shrink-0 text-amber-500" />,
+        label: "Unclear frame",
+      };
+    }
   } else {
-    if (msg.includes("UNHEALTHY") || (msg.includes("Threat Detected") && !msg.includes("No Threat")))
-      s = { wrap: "border-orange-400 dark:border-orange-600 bg-orange-50 dark:bg-orange-900/20", title: "text-orange-800 dark:text-orange-300", body: "text-orange-700 dark:text-orange-400", icon: <AlertTriangle className="w-7 h-7 text-orange-500 shrink-0" />, label: "🌿 Disease Detected" };
-    else if (msg.includes("Animal image given"))
-      s = { wrap: "border-red-400 dark:border-red-600 bg-red-50 dark:bg-red-900/20", title: "text-red-800 dark:text-red-300", body: "text-red-700 dark:text-red-400", icon: <AlertTriangle className="w-7 h-7 text-red-500 shrink-0" />, label: "⚠️ Animal Detected" };
-    else if (msg.includes("Not a plant"))
-      s = { wrap: "border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/60", title: "text-gray-700 dark:text-gray-300", body: "text-gray-600 dark:text-gray-400", icon: <HelpCircle className="w-7 h-7 text-gray-400 shrink-0" />, label: "❌ Not a Plant" };
-    else if (msg.includes("UNCLEAR") || msg.includes("Unclear"))
-      s = { wrap: "border-amber-400 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20", title: "text-amber-800 dark:text-amber-300", body: "text-amber-700 dark:text-amber-400", icon: <AlertTriangle className="w-7 h-7 text-amber-500 shrink-0" />, label: "⚠️ Unclear" };
-    else if (msg.includes("Human detected"))
-      s = { wrap: "border-purple-300 dark:border-purple-600 bg-purple-50 dark:bg-purple-900/20", title: "text-purple-800 dark:text-purple-300", body: "text-purple-700 dark:text-purple-400", icon: <AlertTriangle className="w-7 h-7 text-purple-500 shrink-0" />, label: "👤 Human Detected" };
+    if (msg.includes("UNHEALTHY")) {
+      style = {
+        wrap: "border-orange-400 bg-orange-50 dark:border-orange-600 dark:bg-orange-900/20",
+        title: "text-orange-800 dark:text-orange-300",
+        body: "text-orange-700 dark:text-orange-400",
+        icon: <AlertTriangle className="h-7 w-7 shrink-0 text-orange-500" />,
+        label: "Disease detected",
+      };
+    } else if (msg.toLowerCase().includes("animal image")) {
+      style = {
+        wrap: "border-red-400 bg-red-50 dark:border-red-600 dark:bg-red-900/20",
+        title: "text-red-800 dark:text-red-300",
+        body: "text-red-700 dark:text-red-400",
+        icon: <AlertTriangle className="h-7 w-7 shrink-0 text-red-500" />,
+        label: "Animal image given",
+      };
+    } else if (msg.toLowerCase().includes("not a plant")) {
+      style = {
+        wrap: "border-gray-300 bg-gray-50 dark:border-gray-600 dark:bg-gray-800/60",
+        title: "text-gray-700 dark:text-gray-300",
+        body: "text-gray-600 dark:text-gray-400",
+        icon: <HelpCircle className="h-7 w-7 shrink-0 text-gray-400" />,
+        label: "Not a plant",
+      };
+    } else if (msg.toLowerCase().includes("unclear")) {
+      style = {
+        wrap: "border-amber-400 bg-amber-50 dark:border-amber-600 dark:bg-amber-900/20",
+        title: "text-amber-800 dark:text-amber-300",
+        body: "text-amber-700 dark:text-amber-400",
+        icon: <HelpCircle className="h-7 w-7 shrink-0 text-amber-500" />,
+        label: "Unclear frame",
+      };
+    }
   }
+
   return (
-    <div className={`rounded-xl border-2 ${s.wrap} p-5 transition-colors duration-200`}>
+    <div className={`rounded-3xl border-2 p-5 transition-colors duration-200 ${style.wrap}`}>
       <div className="flex items-start gap-4">
-        {s.icon}
-        <div className="flex-1 min-w-0">
-          <p className={`text-base font-bold mb-1 ${s.title}`}>{s.label}</p>
-          <p className={`text-sm mb-2 ${s.body}`}>{msg || result?.error}</p>
+        {style.icon}
+        <div className="min-w-0 flex-1">
+          <p className={`mb-1 text-lg font-bold ${style.title}`}>{style.label}</p>
+          <p className={`mb-3 text-sm leading-7 sm:text-base ${style.body}`}>{msg}</p>
           <div className="flex flex-wrap gap-3">
-            {result?.confidence > 0 && (
-              <div className="bg-white dark:bg-gray-900 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
+            {typeof result?.confidence === "number" && result.confidence > 0 && (
+              <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-sm dark:border-gray-700 dark:bg-gray-900">
                 <p className="text-xs text-gray-500 dark:text-gray-400">Confidence</p>
                 <p className="text-sm font-semibold text-gray-900 dark:text-white">{result.confidence}%</p>
               </div>
             )}
             {result?.animal_type && result.animal_type !== "Unknown" && (
-              <div className="bg-white dark:bg-gray-900 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
+              <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-sm dark:border-gray-700 dark:bg-gray-900">
                 <p className="text-xs text-gray-500 dark:text-gray-400">Animal</p>
-                <p className="text-sm font-semibold text-gray-900 dark:text-white capitalize">{result.animal_type}</p>
+                <p className="text-sm font-semibold capitalize text-gray-900 dark:text-white">
+                  {result.animal_type}
+                </p>
+              </div>
+            )}
+            {result?.timestamp && (
+              <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+                <p className="text-xs text-gray-500 dark:text-gray-400">Recorded</p>
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                  {new Date(result.timestamp).toLocaleTimeString()}
+                </p>
               </div>
             )}
           </div>
@@ -1278,289 +167,448 @@ function ResultCard({ result, mode }: { result: any; mode: "animal" | "plant" })
   );
 }
 
-function DetectionTab({ mode }: { mode: "animal" | "plant" }) {
+function DetectionTab({
+  mode,
+  statuses,
+  streamUrl,
+}: {
+  mode: Mode;
+  statuses: AllStatuses | null;
+  streamUrl: string | null;
+}) {
   const { user, isGuest } = useAuth();
-  const [image,        setImage]        = useState<string | null>(null);
-  const [imageMode,    setImageMode]    = useState<"upload" | "camera" | null>(null);
-  const [cameraActive, setCameraActive] = useState(false);
-  const [result,       setResult]       = useState<any>(null);
-  const [detectBusy,   setDetectBusy]   = useState(false);
-  const [singleBusy,   setSingleBusy]   = useState(false);
-  const [startingAuto, setStartingAuto] = useState(false);
-  const [autoRunning,  setAutoRunning]  = useState(false);
-  const [count,        setCount]        = useState(0);
-  const [capturing,    setCapturing]    = useState(false);
-  const maxCap = 10;
+  const status = statuses?.[mode] || null;
+  const otherMode: Mode = mode === "animal" ? "plant" : "animal";
+  const otherStatus = statuses?.[otherMode] || null;
+
+  const [uploadImage, setUploadImage] = useState<string | null>(null);
+  const [singleImage, setSingleImage] = useState<string | null>(null);
+  const [manualResult, setManualResult] = useState<any>(null);
+  const [detectBusy, setDetectBusy] = useState(false);
+  const [captureBusy, setCaptureBusy] = useState(false);
+  const [sessionBusy, setSessionBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pushedDetectionsRef = useRef<Record<string, string | null>>({ animal: null, plant: null });
+
+  useEffect(() => {
+    const latestDetectionId = status?.last_detection?.record_id || null;
+    if (!isGuest || !latestDetectionId || pushedDetectionsRef.current[mode] === latestDetectionId) {
+      return;
+    }
+
+    pushedDetectionsRef.current[mode] = latestDetectionId;
+    pushGuestHistory({
+      ...(status?.last_detection || {}),
+      mode,
+      timestamp: Date.now(),
+      image_b64: status?.last_detection?.image_b64 || "",
+    });
+  }, [isGuest, mode, status]);
 
   const handleFile = (file: File) => {
     const reader = new FileReader();
-    reader.onloadend = () => { setImage(reader.result as string); setImageMode("upload"); setResult(null); };
+    reader.onloadend = () => {
+      setUploadImage(reader.result as string);
+      setManualResult(null);
+    };
     reader.readAsDataURL(file);
   };
 
-  const detectImage = async () => {
-    if (!image || imageMode !== "upload") return;
-    setDetectBusy(true); setResult(null);
+  const detectUpload = async () => {
+    if (!uploadImage) return;
+    setDetectBusy(true);
+    setManualResult(null);
     const endpoint = mode === "animal" ? "detect-animal" : "detect-plant";
+
     try {
-      const res = await apiFetch(`/api/${mode}/${endpoint}`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image_base64: image, user_id: user?.id || "guest" }),
+      const response = await apiFetch(`/api/${mode}/${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image_base64: uploadImage, user_id: user?.id || "guest" }),
       });
-      const data = await res.json();
-      setResult(data);
-      if (isGuest && data.success) pushGuestHistory({ ...data, mode, timestamp: Date.now(), image_b64: data.image_b64 || image });
-    } catch { setResult({ success: false, error: "Backend connection failed" }); }
-    finally { setDetectBusy(false); }
+      const payload = await response.json();
+      setManualResult(payload);
+      if (isGuest && payload.success) {
+        pushGuestHistory({ ...payload, mode, timestamp: Date.now(), image_b64: payload.image_b64 || uploadImage });
+      }
+    } catch {
+      setManualResult({ success: false, error: "Backend connection failed" });
+    } finally {
+      setDetectBusy(false);
+    }
   };
 
-  const resetImage = () => {
-    setImage(null); setImageMode(null); setResult(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  };
+  const captureOnce = async () => {
+    setCaptureBusy(true);
+    setSingleImage(null);
+    setManualResult(null);
 
-  useEffect(() => {
-    apiFetch(`/api/auto/status/${mode}`)
-      .then(r => r.json())
-      .then(s => {
-        if (s.running && s.mode === mode) {
-          setAutoRunning(true); setCount(s.count ?? 0);
-          const imgSrc = s.image_b64 || s.last_result?.image_b64 || null;
-          if (imgSrc) { setImage(imgSrc); setImageMode("camera"); }
-          if (s.last_result) setResult(s.last_result);
+    try {
+      const response = await apiFetch(`/api/${mode}/capture-camera`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: user?.id || "guest" }),
+      });
+      const payload = await response.json();
+      setManualResult(payload);
+      if (payload.success) {
+        const imageUrl =
+          payload.image_b64 || (await getApiUrl(`/api/${mode}/image/${payload.filename}?t=${Date.now()}`));
+        setSingleImage(imageUrl);
+        if (isGuest) {
+          pushGuestHistory({ ...payload, mode, timestamp: Date.now(), image_b64: payload.image_b64 || "" });
         }
-      }).catch(() => {});
-  }, [mode]);
+      }
+    } catch {
+      setManualResult({ success: false, error: "Bot camera capture failed" });
+    } finally {
+      setCaptureBusy(false);
+    }
+  };
 
-  useEffect(() => {
-    if (!autoRunning) return;
-    const id = setInterval(async () => {
-      try {
-        const res = await apiFetch(`/api/auto/status/${mode}`);
-        const data = await res.json();
-        if (data.count > count) {
-          setCount(data.count); setCapturing(false);
-          if (data.last_result) {
-            const imgSrc = data.image_b64 || data.last_result.image_b64 || null;
-            if (imgSrc) { setImage(imgSrc); setImageMode("camera"); setCameraActive(false); }
-            setResult(data.last_result);
-            if (isGuest) pushGuestHistory({ ...data.last_result, mode, timestamp: Date.now(), image_b64: imgSrc || "" });
-          }
-        } else if (data.running) { setCapturing(true); }
-        if (!data.running) { setAutoRunning(false); setCapturing(false); setStartingAuto(false); }
-      } catch {}
-    }, 2000);
-    return () => clearInterval(id);
-  }, [autoRunning, count]);
-
-  // ── Single capture from Pi cam — same for both animal and plant ──
-  const singleCapture = async () => {
-    setSingleBusy(true); setResult(null);
-    setImage(null); setImageMode(null); setCameraActive(true);
-    const imageRoute = mode === "animal" ? "animal" : "plant";
+  const startSession = async () => {
+    setSessionBusy(true);
     try {
-      const res = await apiFetch(`/api/${imageRoute}/capture-camera`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+      await apiFetch(`/api/auto/start/${mode}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: user?.id || "guest" }),
       });
-      const data = await res.json();
-      setResult(data);
-      if (data.success) {
-        const imageUrl = data.image_b64 || await getApiUrl(`/api/${imageRoute}/image/${data.filename}?t=${Date.now()}`);
-        setImage(imageUrl);
-        setImageMode("camera");
-        if (isGuest) pushGuestHistory({ ...data, mode, timestamp: Date.now() });
-      }
-    } catch { setResult({ success: false, error: "Bot camera capture failed" }); }
-    finally { setSingleBusy(false); setCameraActive(false); }
+      setManualResult(null);
+      setSingleImage(null);
+    } finally {
+      setSessionBusy(false);
+    }
   };
 
-  const startAuto = async () => {
-    setStartingAuto(true);
+  const stopSession = async () => {
+    setSessionBusy(true);
     try {
-      const res = await apiFetch(`/api/auto/start/${mode}`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: user?.id || "guest" }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setAutoRunning(true); setCapturing(true); setCameraActive(true);
-        setCount(0); setImage(null); setImageMode(null); setResult(null);
-      }
-    } catch {}
-    finally { setStartingAuto(false); }
+      await apiFetch(`/api/auto/stop/${mode}`, { method: "POST" });
+    } finally {
+      setSessionBusy(false);
+    }
   };
 
-  const stopAuto = async () => {
-    await apiFetch(`/api/auto/stop/${mode}`, { method: "POST" });
-    setAutoRunning(false); setCapturing(false); setCameraActive(false);
-  };
+  const liveResult = status?.last_detection || status?.last_result || null;
 
-  const dots = Array.from({ length: maxCap }, (_, i) => i < count);
+  const modeTitle = mode === "animal" ? "Animal Detection" : "Plant Detection";
+  const startLabel = mode === "animal" ? "Start Animal Detection" : "Start Plant Detection";
 
   return (
-    <div className="max-w-4xl mx-auto space-y-5">
-      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm p-5 transition-colors duration-200 space-y-4">
-
-        <div
-          className={`border-2 border-dashed rounded-xl overflow-hidden min-h-52 flex items-center justify-center transition-colors duration-200 ${
-            image ? "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40" :
-            autoRunning ? "border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40" :
-            "border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 cursor-pointer hover:border-emerald-500 dark:hover:border-emerald-500"
-          }`}
-          onClick={() => { if (!image && !autoRunning && !singleBusy) fileInputRef.current?.click(); }}
-          onDrop={(e) => { e.preventDefault(); if (!autoRunning && !singleBusy) { const f = e.dataTransfer.files?.[0]; if (f?.type.startsWith("image/")) handleFile(f); } }}
-          onDragOver={(e) => e.preventDefault()}
-        >
-          {image ? (
-            <div className="relative w-full">
-              <img src={image} alt="Preview" className="w-full max-h-80 object-contain" />
-              {autoRunning && (
-                <div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded-full flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />#{count}
-                </div>
+    <div className="mx-auto max-w-6xl space-y-6">
+      <div className="grid gap-6 xl:grid-cols-[1.55fr_0.95fr]">
+        <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white sm:text-2xl">
+                Live Pi Camera
+              </h2>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 sm:text-base">
+                Shared live camera stream for both models. Inference runs on every 5th frame.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {status?.running && (
+                <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
+                  {modeTitle} running
+                </span>
+              )}
+              {otherStatus?.running && (
+                <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-sky-600 dark:bg-sky-500/10 dark:text-sky-400">
+                  {otherMode} also running
+                </span>
               )}
             </div>
-          ) : (
-            <div className="text-center py-6 px-4 pointer-events-none">
-              {cameraActive || autoRunning ? (
-                <>
-                  <Camera className="w-12 h-12 mx-auto mb-3 text-blue-400 dark:text-blue-500 animate-pulse" />
-                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                    {autoRunning ? "Capturing from Pi camera..." : "Capturing from bot camera..."}
+          </div>
+
+          <div className="overflow-hidden rounded-3xl border border-gray-200 bg-gray-950 dark:border-gray-700">
+            {statuses?.stream_active && streamUrl ? (
+              <img src={streamUrl} alt="Live Pi camera stream" className="aspect-video w-full object-cover" />
+            ) : (
+              <div className="flex aspect-video flex-col items-center justify-center gap-4 px-6 text-center">
+                <Camera className="h-12 w-12 text-gray-500" />
+                <div>
+                  <p className="text-lg font-semibold text-white">Live stream is idle</p>
+                  <p className="mt-2 text-sm text-gray-300 sm:text-base">
+                    Start a detection session and the Pi camera feed will appear here.
                   </p>
-                  {autoRunning && <p className="text-xs text-gray-400 dark:text-gray-600 mt-1">Auto mode active</p>}
-                </>
-              ) : (
-                <>
-                  <Upload className="w-12 h-12 mx-auto mb-3 text-gray-400 dark:text-gray-600" />
-                  <p className="font-medium text-gray-700 dark:text-gray-300 mb-1">Click to upload or drag & drop</p>
-                  <p className="text-sm text-gray-400 dark:text-gray-600">PNG, JPG up to 10 MB</p>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-        <input ref={fileInputRef} type="file" accept="image/*"
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} className="hidden" />
-
-        {image && imageMode === "upload" && (
-          <div className="flex gap-2">
-            <button onClick={detectImage} disabled={detectBusy}
-              className="flex-1 min-w-0 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 text-white font-medium py-2.5 rounded-lg flex items-center justify-center gap-2 text-sm transition-colors">
-              {detectBusy
-                ? <><Loader2 className="w-4 h-4 animate-spin shrink-0" /><span className="truncate">Detecting...</span></>
-                : <><AlertTriangle className="w-4 h-4 shrink-0" /><span className="truncate">{mode === "animal" ? "Detect Threats" : "Detect Disease"}</span></>}
-            </button>
-            <button onClick={resetImage}
-              className="px-4 py-2.5 rounded-lg text-sm bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 transition-colors shrink-0">
-              Reset
-            </button>
-          </div>
-        )}
-
-        {image && imageMode === "camera" && !autoRunning && (
-          <div className="flex justify-end">
-            <button onClick={resetImage}
-              className="px-4 py-2.5 rounded-lg text-sm bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 transition-colors">
-              Reset
-            </button>
-          </div>
-        )}
-
-        <div className="flex items-center gap-2">
-          <Camera className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Camera Detection</p>
-        </div>
-
-        {!autoRunning ? (
-          <div className="flex flex-col sm:flex-row gap-2">
-            <button
-              onClick={singleCapture}
-              disabled={singleBusy}
-              className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 text-white font-medium py-3 rounded-lg flex items-center justify-center gap-2 text-sm transition-colors">
-              {singleBusy
-                ? <><Loader2 className="w-4 h-4 animate-spin shrink-0" />Capturing...</>
-                : <><Bot className="w-4 h-4 shrink-0" />Capture from Camera</>}
-            </button>
-            <button onClick={startAuto} disabled={startingAuto}
-              className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 text-white font-medium py-3 rounded-lg flex items-center justify-center gap-2 text-sm transition-colors">
-              {startingAuto
-                ? <><Loader2 className="w-4 h-4 animate-spin shrink-0" />Starting...</>
-                : <>▶ Start Auto Capture</>}
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-xs px-0.5">
-              <div className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                <span className="font-medium text-gray-700 dark:text-gray-200">Auto Running</span>
+                </div>
               </div>
-              <span className="font-mono text-gray-500 dark:text-gray-400">{count}/{maxCap} · ~{(maxCap - count) * 30}s left</span>
+            )}
+          </div>
+
+          <div className="mt-5 grid gap-4 md:grid-cols-3">
+            <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/50">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+                Remaining
+              </p>
+              <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">
+                {formatRemaining(status?.remaining_seconds || 0)}
+              </p>
             </div>
-            <div className="flex gap-1.5">
-              {dots.map((done, i) => (
-                <div key={i} className={`flex-1 h-1.5 rounded-full transition-all duration-500 ${
-                  done ? "bg-emerald-500" : i === count && capturing ? "bg-blue-500 animate-pulse" : "bg-gray-200 dark:bg-gray-700"
-                }`} />
-              ))}
+            <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/50">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+                Saved Detections
+              </p>
+              <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">
+                {status?.detection_count || 0}
+              </p>
             </div>
-            <button onClick={stopAuto}
-              className="w-full bg-red-600 hover:bg-red-700 text-white font-medium py-3 rounded-lg flex items-center justify-center gap-2 text-sm transition-colors">
-              <Square className="w-4 h-4" /> Stop Auto Capture
+            <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/50">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+                Session Length
+              </p>
+              <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">
+                {Math.round((status?.duration_seconds || 600) / 60)} min
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-5">
+          <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
+            <div className="mb-4 flex items-center gap-3">
+              {mode === "animal" ? (
+                <Bot className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+              ) : (
+                <Flower2 className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+              )}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white sm:text-xl">
+                  {modeTitle} Session
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 sm:text-base">
+                  Continuous live monitoring for 10 minutes with reduced-power inference.
+                </p>
+              </div>
+            </div>
+
+            {!status?.running ? (
+              <button
+                onClick={startSession}
+                disabled={sessionBusy}
+                className="w-full rounded-2xl bg-emerald-500 px-5 py-4 text-base font-semibold text-white shadow-lg shadow-emerald-500/20 transition-all hover:bg-emerald-600 disabled:opacity-60"
+              >
+                {sessionBusy ? "Starting..." : startLabel}
+              </button>
+            ) : (
+              <button
+                onClick={stopSession}
+                disabled={sessionBusy}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-red-600 px-5 py-4 text-base font-semibold text-white shadow-lg shadow-red-500/20 transition-all hover:bg-red-700 disabled:opacity-60"
+              >
+                <Square className="h-5 w-5" />
+                {sessionBusy ? "Stopping..." : "Stop Detection"}
+              </button>
+            )}
+
+            {status?.completed && !status?.running && (
+              <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+                Detection complete. The 10-minute session finished automatically.
+              </div>
+            )}
+
+            {status?.error && (
+              <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
+                {status.error}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-3xl border border-sky-200 bg-sky-50 p-5 shadow-sm dark:border-sky-500/20 dark:bg-sky-950/20 sm:p-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sky-600 dark:text-sky-300">
+              Session Rules
+            </p>
+            <ul className="mt-3 space-y-2 text-sm leading-6 text-sky-900 dark:text-sky-100/90 sm:text-base">
+              <li>The camera stays live continuously while the session is running.</li>
+              <li>The model checks every 5th frame to reduce Pi CPU load.</li>
+              <li>Only relevant detections are saved to MongoDB and notifications.</li>
+              <li>Animal and plant sessions can overlap and share the same Pi camera stream.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      {liveResult && <ResultCard result={liveResult} mode={mode} />}
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
+          <div className="mb-4 flex items-center gap-2">
+            <Upload className="h-5 w-5 text-gray-400 dark:text-gray-500" />
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Upload Image Test</h3>
+          </div>
+
+          <div
+            className={`flex min-h-52 items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed transition-colors ${
+              uploadImage
+                ? "border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/30"
+                : "cursor-pointer border-gray-300 bg-gray-50 hover:border-emerald-500 dark:border-gray-700 dark:bg-gray-800/30 dark:hover:border-emerald-500"
+            }`}
+            onClick={() => fileInputRef.current?.click()}
+            onDrop={(event) => {
+              event.preventDefault();
+              const file = event.dataTransfer.files?.[0];
+              if (file?.type.startsWith("image/")) handleFile(file);
+            }}
+            onDragOver={(event) => event.preventDefault()}
+          >
+            {uploadImage ? (
+              <img src={uploadImage} alt="Uploaded preview" className="max-h-80 w-full object-contain" />
+            ) : (
+              <div className="px-4 text-center">
+                <Upload className="mx-auto mb-3 h-12 w-12 text-gray-400 dark:text-gray-600" />
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 sm:text-base">
+                  Click to upload or drag and drop
+                </p>
+                <p className="mt-1 text-sm text-gray-400 dark:text-gray-500">PNG or JPG image</p>
+              </div>
+            )}
+          </div>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) handleFile(file);
+            }}
+          />
+
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+            <button
+              onClick={detectUpload}
+              disabled={!uploadImage || detectBusy}
+              className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-60"
+            >
+              {detectBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
+              {detectBusy ? "Detecting..." : mode === "animal" ? "Detect Animal Threat" : "Detect Plant Disease"}
+            </button>
+            <button
+              onClick={() => {
+                setUploadImage(null);
+                setManualResult(null);
+                if (fileInputRef.current) fileInputRef.current.value = "";
+              }}
+              className="rounded-2xl border border-gray-200 bg-gray-100 px-4 py-3 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            >
+              Reset
             </button>
           </div>
-        )}
+        </div>
+
+        <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
+          <div className="mb-4 flex items-center gap-2">
+            <Camera className="h-5 w-5 text-gray-400 dark:text-gray-500" />
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Single Camera Capture</h3>
+          </div>
+
+          <div className="flex min-h-52 items-center justify-center overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/30">
+            {singleImage ? (
+              <img src={singleImage} alt="Single Pi camera capture" className="max-h-80 w-full object-contain" />
+            ) : (
+              <div className="px-4 text-center">
+                <Camera className="mx-auto mb-3 h-12 w-12 text-gray-400 dark:text-gray-600" />
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 sm:text-base">
+                  Capture one frame from the Pi camera
+                </p>
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={captureOnce}
+            disabled={captureBusy}
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-60"
+          >
+            {captureBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
+            {captureBusy ? "Capturing..." : "Capture from Pi Camera"}
+          </button>
+        </div>
       </div>
 
-      {result && <ResultCard result={result} mode={mode} />}
-
-      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-5 transition-colors duration-200">
-        <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-300 mb-3">
-          {mode === "animal" ? "🐾 About the Animal Model" : "🌿 About the Plant Model"}
-        </h3>
-        <ul className="list-disc pl-5 space-y-1.5 text-sm text-blue-800 dark:text-blue-400">
-          {mode === "animal" ? <>
-            <li>Trained deep learning model on a multi-class animal dataset.</li>
-            <li>Detects crop threats: birds, monkeys, cows, and wild animals.</li>
-            <li>Processes images using computer vision on the Raspberry Pi 4.</li>
-            <li>All results are saved to detection history for monitoring.</li>
-          </> : <>
-            <li>Trained on the PlantVillage dataset with 38 disease classes.</li>
-            <li>Supports Apple, Corn, Grape, Tomato, Potato, Peach and more.</li>
-            <li>Multi-stage pipeline: plant guard → disease classification.</li>
-            <li>All results are saved to detection history for monitoring.</li>
-          </>}
-        </ul>
-      </div>
+      {manualResult && <ResultCard result={manualResult} mode={mode} />}
     </div>
   );
 }
 
 export default function DetectionPage() {
-  const [tab, setTab] = useState<"animal" | "plant">("animal");
+  const [tab, setTab] = useState<Mode>("animal");
+  const [statuses, setStatuses] = useState<AllStatuses | null>(null);
+  const [streamUrl, setStreamUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    getApiUrl("/api/auto/stream").then((url) => {
+      if (active) setStreamUrl(url);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadStatus = async () => {
+      try {
+        const response = await apiFetch("/api/auto/status");
+        const payload = await response.json();
+        if (!active) return;
+        setStatuses(payload);
+      } catch {
+        if (!active) return;
+      }
+    };
+
+    loadStatus();
+    const timer = window.setInterval(loadStatus, 1000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, []);
+
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 transition-colors duration-200 pb-12">
-      <div className="px-6 pt-6 pb-4 max-w-4xl mx-auto">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">AI Threat Detection</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Detect animal threats and plant diseases</p>
-      </div>
-      <div className="px-6 mb-6 max-w-4xl mx-auto">
-        <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-1 gap-1">
-          <button onClick={() => setTab("animal")}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-150 ${tab === "animal" ? "bg-green-600 text-white shadow-sm" : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"}`}>
-            🐾 Animal Detection
+    <div className="min-h-screen bg-gray-50 px-4 py-5 transition-colors duration-200 dark:bg-gray-950 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-6xl">
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white sm:text-3xl">
+            AI Threat Detection
+          </h1>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 sm:text-base">
+            Shared live Pi camera detection for animal threats and plant disease sessions.
+          </p>
+        </div>
+
+        <div className="mb-6 inline-flex rounded-2xl border border-gray-200 bg-white p-1 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <button
+            onClick={() => setTab("animal")}
+            className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition-all ${
+              tab === "animal"
+                ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/20"
+                : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+            }`}
+          >
+            Animal Detection
           </button>
-          <button onClick={() => setTab("plant")}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-150 ${tab === "plant" ? "bg-green-600 text-white shadow-sm" : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"}`}>
-            🌿 Plant Detection
+          <button
+            onClick={() => setTab("plant")}
+            className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition-all ${
+              tab === "plant"
+                ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/20"
+                : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+            }`}
+          >
+            Plant Detection
           </button>
         </div>
-      </div>
-      <div className="px-6">
-        <DetectionTab key={tab} mode={tab} />
+
+        <DetectionTab mode={tab} statuses={statuses} streamUrl={streamUrl} />
       </div>
     </div>
   );
