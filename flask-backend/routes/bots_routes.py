@@ -6,7 +6,8 @@ from services.bots_service import (
     get_all_bots,
     get_bot_by_id,
     add_bot,
-    update_bot
+    update_bot,
+    log_bot_command
 )
 
 bots_bp = Blueprint("bots_bp", __name__)
@@ -38,3 +39,10 @@ def update_bot_route(bot_id):
     if not bot:
         return jsonify({"error": "Bot not found"}), 404
     return jsonify(bot)
+
+
+@bots_bp.route("/bots/command", methods=["POST"])
+def log_bot_command_route():
+    data = request.get_json() or {}
+    payload = log_bot_command(data)
+    return jsonify({"success": True, "data": payload}), 201

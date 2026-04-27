@@ -1,123 +1,183 @@
-'use client';
+"use client";
 
-import { Bell, AlertCircle, CheckCircle, Info, Clock } from 'lucide-react';
+import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, Bell, CheckCircle2, Clock3, ShieldAlert } from "lucide-react";
 
-const notifications = [
-  {
-    id: 1,
-    type: 'warning',
-    title: 'Low Soil Moisture Detected',
-    message: 'Sector A3 shows moisture levels below 40%. Consider irrigation.',
-    time: '2 minutes ago',
-    icon: AlertCircle,
-    light: 'text-yellow-600 bg-yellow-100',
-    dark:  'dark:text-yellow-400 dark:bg-yellow-900/30',
-    dot:   'bg-yellow-500',
-  },
-  {
-    id: 2,
-    type: 'success',
-    title: 'Irrigation Cycle Completed',
-    message: 'Automated irrigation in Sector B2 completed successfully.',
-    time: '15 minutes ago',
-    icon: CheckCircle,
-    light: 'text-green-600 bg-green-100',
-    dark:  'dark:text-green-400 dark:bg-green-900/30',
-    dot:   'bg-green-500',
-  },
-  {
-    id: 3,
-    type: 'info',
-    title: 'Weather Update',
-    message: 'Rain expected in the next 6 hours. Adjust irrigation schedule accordingly.',
-    time: '1 hour ago',
-    icon: Info,
-    light: 'text-blue-600 bg-blue-100',
-    dark:  'dark:text-blue-400 dark:bg-blue-900/30',
-    dot:   'bg-blue-500',
-  },
-  {
-    id: 4,
-    type: 'warning',
-    title: 'Bot Battery Low',
-    message: 'Agricultural bot #3 battery at 15%. Return to charging station recommended.',
-    time: '2 hours ago',
-    icon: AlertCircle,
-    light: 'text-orange-600 bg-orange-100',
-    dark:  'dark:text-orange-400 dark:bg-orange-900/30',
-    dot:   'bg-orange-500',
-  },
-  {
-    id: 5,
-    type: 'info',
-    title: 'Harvest Schedule',
-    message: 'Tomatoes in Sector C1 ready for harvest in 3 days.',
-    time: '1 day ago',
-    icon: Clock,
-    light: 'text-purple-600 bg-purple-100',
-    dark:  'dark:text-purple-400 dark:bg-purple-900/30',
-    dot:   'bg-purple-500',
-  },
-];
+import { apiFetch } from "@/lib/api";
+
+type NotificationItem = {
+  id: string;
+  type: "warning" | "success" | "info";
+  title: string;
+  message: string;
+  source: string;
+  timestamp?: string | null;
+};
+
+function formatTime(value?: string | null) {
+  if (!value) return "Waiting for live data";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString();
+}
 
 export default function NotificationsPage() {
-  return (
-    <div className="min-h-full bg-gray-50 dark:bg-gray-950 transition-colors duration-200 p-4 sm:p-6 lg:p-8">
-      <div className="max-w-3xl mx-auto">
+  const [items, setItems] = useState<NotificationItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center gap-3 mb-1">
-            <Bell className="h-7 w-7 text-gray-700 dark:text-gray-300" />
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">Notifications</h1>
+  useEffect(() => {
+    let active = true;
+
+    const load = async () => {
+      try {
+        const response = await apiFetch("/api/system/notifications");
+        if (!response.ok) throw new Error("Notifications could not be loaded");
+
+        const payload = await response.json();
+        if (!active) return;
+        setItems(Array.isArray(payload?.data) ? payload.data : []);
+        setError(null);
+      } catch (err: any) {
+        if (!active) return;
+        setError(err.message || "Unable to load notifications");
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    load();
+    const timer = window.setInterval(load, 3000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  const summary = useMemo(() => {
+    const warnings = items.filter((item) => item.type === "warning").length;
+    return { total: items.length, warnings, stable: items.length - warnings };
+  }, [items]);
+
+  return (
+    <div className="min-h-full bg-gray-50 px-4 py-5 transition-colors duration-200 dark:bg-gray-950 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-5xl">
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <div className="mb-2 flex items-center gap-3">
+              <Bell className="h-7 w-7 text-gray-700 dark:text-gray-300" />
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white sm:text-3xl">
+                Threat Notifications
+              </h1>
+            </div>
+            <p className="text-sm text-gray-500 dark:text-gray-400 sm:text-base">
+              Live sensor alerts plus AI threat history from your local offline backend.
+            </p>
           </div>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Stay updated with your agricultural operations</p>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-center shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-400 dark:text-gray-500">
+                Total
+              </p>
+              <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{summary.total}</p>
+            </div>
+            <div className="rounded-2xl border border-red-200 bg-white px-4 py-3 text-center shadow-sm dark:border-red-500/20 dark:bg-gray-900">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-red-500 dark:text-red-400">
+                Threats
+              </p>
+              <p className="mt-2 text-2xl font-bold text-red-600 dark:text-red-400">
+                {summary.warnings}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-center shadow-sm dark:border-emerald-500/20 dark:bg-gray-900">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-500 dark:text-emerald-400">
+                Stable
+              </p>
+              <p className="mt-2 text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                {summary.stable}
+              </p>
+            </div>
+          </div>
         </div>
 
-        {/* Notification List */}
-        <div className="space-y-3">
-          {notifications.map((n) => {
-            const Icon = n.icon;
-            return (
-              <div
-                key={n.id}
-                className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5 shadow-sm hover:shadow-md transition-all duration-200"
-              >
-                <div className="flex items-start gap-4">
-                  {/* Icon badge */}
-                  <div className={`p-2 rounded-full shrink-0 ${n.light} ${n.dark}`}>
-                    <Icon className="h-5 w-5" />
-                  </div>
+        {error && (
+          <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm font-medium text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
+            {error}
+          </div>
+        )}
 
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">
-                          {n.title}
-                        </h3>
-                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                          {n.message}
-                        </p>
-                        <span className="text-xs text-gray-400 dark:text-gray-500">{n.time}</span>
+        <div className="space-y-4">
+          {loading &&
+            Array.from({ length: 4 }).map((_, index) => (
+              <div
+                key={index}
+                className="animate-pulse rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900"
+              >
+                <div className="h-5 w-40 rounded bg-gray-100 dark:bg-gray-800" />
+                <div className="mt-4 h-4 w-full rounded bg-gray-100 dark:bg-gray-800" />
+                <div className="mt-2 h-4 w-2/3 rounded bg-gray-100 dark:bg-gray-800" />
+              </div>
+            ))}
+
+          {!loading &&
+            items.map((item) => {
+              const isWarning = item.type === "warning";
+              const Icon =
+                item.type === "success"
+                  ? CheckCircle2
+                  : item.type === "info"
+                    ? Clock3
+                    : AlertTriangle;
+
+              return (
+                <div
+                  key={item.id}
+                  className={`rounded-3xl border bg-white p-5 shadow-sm transition-colors dark:bg-gray-900 sm:p-6 ${
+                    isWarning
+                      ? "border-red-200 dark:border-red-500/20"
+                      : "border-gray-200 dark:border-gray-800"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-start gap-4">
+                    <div
+                      className={`rounded-2xl p-3 ${
+                        isWarning
+                          ? "bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400"
+                          : "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
+                      }`}
+                    >
+                      <Icon className="h-6 w-6" />
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <h2 className="text-lg font-semibold text-gray-900 dark:text-white sm:text-xl">
+                          {item.title}
+                        </h2>
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] ${
+                            isWarning
+                              ? "bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400"
+                              : "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
+                          }`}
+                        >
+                          {item.source.replaceAll("_", " ")}
+                        </span>
                       </div>
-                      {/* Unread dot */}
-                      <div className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${n.dot}`} />
+                      <p className="mt-2 text-sm leading-7 text-gray-600 dark:text-gray-400 sm:text-base">
+                        {item.message}
+                      </p>
+                      <div className="mt-4 flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                        <ShieldAlert className="h-4 w-4" />
+                        <span>{formatTime(item.timestamp)}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
         </div>
-
-        {/* Load more */}
-        <div className="text-center mt-8">
-          <button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg font-medium text-sm transition-colors shadow-sm">
-            Load More Notifications
-          </button>
-        </div>
-
       </div>
     </div>
   );

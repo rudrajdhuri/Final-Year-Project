@@ -128,7 +128,7 @@ export default function DashboardLayout({
 
       {/* Sidebar */}
       <aside className={`
-        fixed inset-y-0 left-0 z-30 w-64
+        fixed inset-y-0 left-0 z-30 w-72
         lg:static lg:z-auto lg:shrink-0
         transition-transform duration-300 ease-in-out
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}

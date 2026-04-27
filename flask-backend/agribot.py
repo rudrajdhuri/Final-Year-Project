@@ -64,6 +64,7 @@ from flask_cors import CORS
 import os
 from dotenv import load_dotenv
 from database import mongo
+from services.esp32_bridge import start_sensor_bridge
 
 load_dotenv()
 
@@ -96,9 +97,11 @@ def create_app():
     from routes.auto_detection import auto_detection_bp
     from routes.auth_routes import auth_bp
     from routes.ai_assistant import ai_assistant_bp
+    from routes.notifications_routes import notifications_bp
 
     app.register_blueprint(soil_readings_bp,    url_prefix="/api/soil")
     app.register_blueprint(system_info_bp,      url_prefix="/api/system")
+    app.register_blueprint(notifications_bp,    url_prefix="/api/system")
     app.register_blueprint(bots_bp,             url_prefix="/api")
     app.register_blueprint(fields_bp,           url_prefix="/api")
     app.register_blueprint(weather_news_bp,     url_prefix="/api")
@@ -117,6 +120,8 @@ def create_app():
     def db_status():
         mongo.db.command("ping")
         return {"status": "MongoDB OK"}
+
+    start_sensor_bridge(app)
 
     return app
 

@@ -1,64 +1,136 @@
 'use client';
 
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip } from 'recharts';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
+
+type SeriesConfig = {
+  key: string;
+  label: string;
+  color: string;
+};
 
 interface GraphProps {
-  data: any[];
+  data: Record<string, any>[];
+  xKey?: string;
+  series?: SeriesConfig[];
+  height?: number;
+  showYAxis?: boolean;
 }
 
-export default function Graph({ data }: GraphProps) {
+const defaultSeries: SeriesConfig[] = [
+  { key: 'value', label: 'Value', color: '#10b981' },
+];
+
+export default function Graph({
+  data,
+  xKey = 'label',
+  series = defaultSeries,
+  height = 320,
+  showYAxis = false,
+}: GraphProps) {
   const [isDark, setIsDark] = useState(false);
 
   useEffect(() => {
-    const check = () => setIsDark(document.documentElement.classList.contains('dark'));
-    check();
-    const observer = new MutationObserver(check);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    const syncTheme = () => setIsDark(document.documentElement.classList.contains('dark'));
+    syncTheme();
+
+    const observer = new MutationObserver(syncTheme);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    });
+
     return () => observer.disconnect();
   }, []);
 
-  const gridColor  = isDark ? '#1f2937' : '#f0f0f0';
-  const tickColor  = isDark ? '#6b7280' : '#9ca3af';
-  const tooltipBg  = isDark ? '#1f2937' : '#ffffff';
-  const tooltipBorder = isDark ? '#374151' : '#e5e7eb';
+  const palette = useMemo(
+    () => ({
+      grid: isDark ? '#243041' : '#e8edf4',
+      tick: isDark ? '#94a3b8' : '#64748b',
+      tooltipBg: isDark ? '#111827' : '#ffffff',
+      tooltipBorder: isDark ? '#334155' : '#dbe4ee',
+      axis: isDark ? '#1f2937' : '#e2e8f0',
+    }),
+    [isDark]
+  );
+
+  const domain = useMemo(() => {
+    const values = data.flatMap((row) =>
+      series
+        .map((item) => Number(row[item.key]))
+        .filter((value) => Number.isFinite(value))
+    );
+
+    if (!values.length) return [0, 100];
+
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+
+    if (min === max) {
+      const pad = Math.max(1, Math.abs(min) * 0.15);
+      return [Math.max(0, min - pad), max + pad];
+    }
+
+    const padding = Math.max(1, (max - min) * 0.18);
+    return [Math.max(0, min - padding), max + padding];
+  }, [data, series]);
 
   return (
-    <div className="h-80">
+    <div style={{ height }} className="w-full">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
-          <CartesianGrid
-            strokeDasharray="3 3"
-            stroke={gridColor}
-            horizontal={true}
-            vertical={false}
-          />
+        <LineChart data={data} margin={{ top: 16, right: 16, left: 4, bottom: 8 }}>
+          <CartesianGrid strokeDasharray="4 4" stroke={palette.grid} vertical={false} />
           <XAxis
-            dataKey="label"
+            dataKey={xKey}
             axisLine={false}
             tickLine={false}
-            tick={{ fill: tickColor, fontSize: 12 }}
+            tick={{ fill: palette.tick, fontSize: 12 }}
             dy={10}
           />
-          <YAxis hide />
+          <YAxis
+            hide={!showYAxis}
+            axisLine={false}
+            tickLine={false}
+            tick={{ fill: palette.tick, fontSize: 12 }}
+            domain={domain as [number, number]}
+            width={44}
+          />
           <Tooltip
             contentStyle={{
-              backgroundColor: tooltipBg,
-              border: `1px solid ${tooltipBorder}`,
-              borderRadius: '8px',
-              color: isDark ? '#f9fafb' : '#111827',
+              backgroundColor: palette.tooltipBg,
+              border: `1px solid ${palette.tooltipBorder}`,
+              borderRadius: '14px',
+              color: isDark ? '#f8fafc' : '#0f172a',
               fontSize: '12px',
+              boxShadow: '0 18px 44px rgba(15,23,42,0.14)',
             }}
-            cursor={{ stroke: isDark ? '#374151' : '#e5e7eb', strokeWidth: 1 }}
+            cursor={{ stroke: palette.axis, strokeWidth: 1 }}
           />
-          <Line
-            type="monotone"
-            dataKey="value"
-            stroke="#10b981"
-            strokeWidth={3}
-            dot={false}
-            activeDot={{ r: 6, fill: '#10b981', stroke: isDark ? '#111827' : '#ffffff', strokeWidth: 2 }}
-          />
+          {series.map((item) => (
+            <Line
+              key={item.key}
+              type="monotone"
+              dataKey={item.key}
+              name={item.label}
+              stroke={item.color}
+              strokeWidth={3}
+              dot={false}
+              activeDot={{
+                r: 5,
+                fill: item.color,
+                stroke: isDark ? '#020617' : '#ffffff',
+                strokeWidth: 2,
+              }}
+            />
+          ))}
         </LineChart>
       </ResponsiveContainer>
     </div>

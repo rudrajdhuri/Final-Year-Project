@@ -1,45 +1,17 @@
-# #logic for gebnerating real-time soil sensor data
-# import random
+from database import COLLECTIONS
+from services.esp32_bridge import get_sensor_history, get_sensor_snapshot
 
-# def get_soil_readings():
-#     return {
-#         "moisture": random.randint(30, 90),       # %
-#         "temperature": random.uniform(18, 38),    # °C
-#         "ph": round(random.uniform(5.5, 7.5), 2), # pH level
-#         "nitrogen": random.randint(10, 50),       # mg/kg
-#         "phosphorus": random.randint(5, 40),
-#         "potassium": random.randint(20, 60),
-#         "battery": random.randint(60, 100),
-#         "timestamp": "just now",
-#         "graph": [
-#             {"label": "Moisture", "value": random.randint(30, 90)},
-#             {"label": "Temperature", "value": random.uniform(18, 38)},
-#             {"label": "pH", "value": round(random.uniform(5.5, 7.5), 2)}
-#         ]
-#     }
-
-# services/soil_service.py
-
-# services/soil_service.py
-
-import random
-from datetime import datetime
-from database import get_collection, COLLECTIONS
 
 def get_soil_readings():
-    # ✅ DB access INSIDE function (after app init)
-    sensor_col = get_collection(COLLECTIONS['SENSORS'])
-
-    data = {
-        "moisture": random.randint(30, 90),
-        "temperature": round(random.uniform(18, 38), 2),
-        "ph": round(random.uniform(5.5, 7.5), 2),
-        "nitrogen": random.randint(10, 50),
-        "phosphorus": random.randint(5, 40),
-        "potassium": random.randint(20, 60),
-        "battery": random.randint(60, 100),
-        "timestamp": datetime.utcnow()
+    snapshot = get_sensor_snapshot()
+    return {
+        "moisture": snapshot.get("moisture"),
+        "temperature": snapshot.get("temperature"),
+        "humidity": snapshot.get("humidity"),
+        "ph": snapshot.get("ph"),
+        "obstacle": snapshot.get("obstacle"),
+        "connected": snapshot.get("connected"),
+        "timestamp": snapshot.get("timestamp"),
+        "history": get_sensor_history(10),
+        "sensor_source": COLLECTIONS["SENSORS"],
     }
-
-    sensor_col.insert_one(data)
-    return data
