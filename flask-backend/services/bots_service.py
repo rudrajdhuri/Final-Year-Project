@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from database import COLLECTIONS, get_collection, limit_collection
+from services.autonomous_service import record_manual_command
 from services.esp32_bridge import get_sensor_history, get_sensor_snapshot
 
 BOTS = [
@@ -130,4 +131,5 @@ def log_bot_command(command):
         payload["message"] = command["message"]
     actuator_col.insert_one(payload)
     limit_collection(COLLECTIONS["ACTUATORS"], 10)
+    record_manual_command(payload)
     return payload

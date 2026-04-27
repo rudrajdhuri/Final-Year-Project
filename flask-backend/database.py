@@ -29,4 +29,5 @@ COLLECTIONS = {
     "ANIMALS": "animaldect_data",
     "PLANTS": "plantdect_data",
     "USERS": "users",
+    "PROFILES": "autonomous_profiles",
 }

@@ -22,6 +22,7 @@ FRAME_SKIP = 5
 CAPTURE_INTERVAL_SECONDS = 0.2
 SAVE_COOLDOWN_SECONDS = 8
 STREAM_BOUNDARY = b"--frame"
+DETECTION_HISTORY_LIMIT = 20
 
 _lock = threading.Lock()
 _worker_thread: threading.Thread | None = None
@@ -236,7 +237,7 @@ def _save_detection(mode: str, parsed: dict[str, Any], frame, current_time: date
                     "timestamp": current_time,
                 }
             )
-            limit_collection(COLLECTIONS["ANIMALS"])
+            limit_collection(COLLECTIONS["ANIMALS"], DETECTION_HISTORY_LIMIT)
             payload = {
                 "record_id": str(inserted.inserted_id),
                 "success": True,
@@ -260,7 +261,7 @@ def _save_detection(mode: str, parsed: dict[str, Any], frame, current_time: date
                     "timestamp": current_time,
                 }
             )
-            limit_collection(COLLECTIONS["PLANTS"])
+            limit_collection(COLLECTIONS["PLANTS"], DETECTION_HISTORY_LIMIT)
             payload = {
                 "record_id": str(inserted.inserted_id),
                 "success": True,
@@ -408,7 +409,7 @@ def _run_worker():
             _worker_thread = None
 
 
-def start_detection(mode: str, user_id: str = "guest") -> dict[str, Any]:
+def start_detection(mode: str, user_id: str = "guest", duration_seconds: int | None = SESSION_DURATION_SECONDS) -> dict[str, Any]:
     global _worker_thread
 
     if mode not in _states:
@@ -419,7 +420,7 @@ def start_detection(mode: str, user_id: str = "guest") -> dict[str, Any]:
         _states[mode]["running"] = True
         _states[mode]["completed"] = False
         _states[mode]["started_at"] = current_time
-        _states[mode]["ends_at"] = current_time + timedelta(seconds=SESSION_DURATION_SECONDS)
+        _states[mode]["ends_at"] = current_time + timedelta(seconds=duration_seconds) if duration_seconds else None
         _states[mode]["completed_at"] = None
         _states[mode]["user_id"] = user_id
         _states[mode]["error"] = None
@@ -468,6 +469,10 @@ def get_detection_status(mode: str) -> dict[str, Any]:
     if mode_state["running"] and mode_state["ends_at"]:
         remaining_seconds = max(0, int((mode_state["ends_at"] - current_time).total_seconds()))
 
+    duration_seconds = None
+    if mode_state["started_at"] and mode_state["ends_at"]:
+        duration_seconds = int((mode_state["ends_at"] - mode_state["started_at"]).total_seconds())
+
     return {
         "mode": mode,
         "running": mode_state["running"],
@@ -484,7 +489,7 @@ def get_detection_status(mode: str) -> dict[str, Any]:
         "stream_active": shared_active,
         "active_modes": active_modes,
         "frame_skip": FRAME_SKIP,
-        "duration_seconds": SESSION_DURATION_SECONDS,
+        "duration_seconds": duration_seconds,
     }
 
 
