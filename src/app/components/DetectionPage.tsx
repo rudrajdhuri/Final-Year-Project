@@ -305,11 +305,7 @@ function DetectionTab({
               <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
                 Live detection running
               </span>
-            ) : (
-              <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-                Manual mode ready
-              </span>
-            )}
+            ) : null}
           </div>
         </div>
 
@@ -419,17 +415,17 @@ function DetectionTab({
               {status?.detection_count || 0}
             </p>
           </div>
-          <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/60">
-            <p className="text-xs uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Mode</p>
-            <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-white">
-              {showAutonomousOnly
-                ? `Shared with autonomous profile ${autonomousProfileName || ""}`.trim()
-                : liveSessionRunning
-                  ? "Manual live detection"
-                  : "Single capture or upload"}
-            </p>
+            <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/60">
+              <p className="text-xs uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Mode</p>
+              <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-white">
+                {showAutonomousOnly
+                  ? `Shared with autonomous profile ${autonomousProfileName || ""}`.trim()
+                  : liveSessionRunning
+                  ? "Live detection"
+                  : "Capture or upload"}
+              </p>
+            </div>
           </div>
-        </div>
       </div>
 
       {(manualResult || currentLiveResult) && (
@@ -517,10 +513,10 @@ export default function DetectionPage() {
           </div>
         </div>
 
-        <div className="mb-6 inline-flex rounded-2xl border border-gray-200 bg-white p-1 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <div className="mb-6 flex gap-3 overflow-x-auto rounded-2xl border border-gray-200 bg-white p-1 shadow-sm [scrollbar-width:none] dark:border-gray-800 dark:bg-gray-900 [&::-webkit-scrollbar]:hidden">
           <button
             onClick={() => setTab("animal")}
-            className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition-all ${
+            className={`min-w-[13rem] shrink-0 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all sm:min-w-0 ${
               tab === "animal"
                 ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/20"
                 : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
@@ -530,7 +526,7 @@ export default function DetectionPage() {
           </button>
           <button
             onClick={() => setTab("plant")}
-            className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition-all ${
+            className={`min-w-[13rem] shrink-0 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all sm:min-w-0 ${
               tab === "plant"
                 ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/20"
                 : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"

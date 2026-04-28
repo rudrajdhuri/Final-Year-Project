@@ -447,10 +447,10 @@ function ConnectionCard({
   onDisconnect: () => void;
 }) {
   return (
-    <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
-      <div className="flex flex-wrap items-center gap-4">
+    <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center">
         <div
-          className={`flex h-14 w-14 items-center justify-center rounded-2xl border ${
+          className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border sm:h-14 sm:w-14 ${
             connected
               ? "border-emerald-200 bg-emerald-50 dark:border-emerald-500/20 dark:bg-emerald-500/10"
               : "border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-800"
@@ -475,7 +475,7 @@ function ConnectionCard({
         <button
           onClick={connected ? onDisconnect : onConnect}
           disabled={connecting}
-          className={`rounded-2xl px-5 py-3 text-sm font-semibold transition-all disabled:opacity-60 ${
+          className={`w-full rounded-2xl px-5 py-3 text-sm font-semibold transition-all disabled:opacity-60 sm:w-auto ${
             connected
               ? "border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400 dark:hover:bg-red-500/20"
               : "bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 hover:bg-emerald-600"
@@ -495,6 +495,8 @@ function ControlSurface({
   setSpeed,
   lastCommand,
   sendCommand,
+  hideSideInfoOnMobile = false,
+  hideSpeedCard = false,
 }: {
   connected: boolean;
   canAdjustSpeed: boolean;
@@ -502,6 +504,8 @@ function ControlSurface({
   setSpeed: (value: number) => void;
   lastCommand: CommandKey;
   sendCommand: (command: CommandKey, release?: boolean) => void | Promise<void>;
+  hideSideInfoOnMobile?: boolean;
+  hideSpeedCard?: boolean;
 }) {
   const actionDisabled = !connected;
 
@@ -604,7 +608,7 @@ function ControlSurface({
         </div>
       </div>
 
-      <div className="space-y-5">
+      <div className={`space-y-5 ${hideSideInfoOnMobile ? "hidden lg:block" : ""}`}>
         <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Control Status</h3>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -623,29 +627,31 @@ function ControlSurface({
           </div>
         </div>
 
-        <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Motor Speed</h3>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 sm:text-base">
-            Manual driving can still use the speed slider. Training and autonomous replay remain
-            fixed at PWM 205.
-          </p>
+        {!hideSpeedCard ? (
+          <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Motor Speed</h3>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 sm:text-base">
+              Manual driving can still use the speed slider. Training and autonomous replay remain
+              fixed at PWM 205.
+            </p>
 
-          <div className="mt-5">
-            <div className="mb-2 flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
-              <span>Selected PWM</span>
-              <span className="font-semibold text-gray-900 dark:text-white">{speed}</span>
+            <div className="mt-5">
+              <div className="mb-2 flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
+                <span>Selected PWM</span>
+                <span className="font-semibold text-gray-900 dark:text-white">{speed}</span>
+              </div>
+              <input
+                type="range"
+                min={80}
+                max={255}
+                value={speed}
+                disabled={!canAdjustSpeed}
+                onChange={(event) => setSpeed(Number(event.target.value))}
+                className="h-2 w-full cursor-pointer appearance-none rounded-full bg-gray-200 accent-emerald-500 disabled:cursor-not-allowed dark:bg-gray-800"
+              />
             </div>
-            <input
-              type="range"
-              min={80}
-              max={255}
-              value={speed}
-              disabled={!canAdjustSpeed}
-              onChange={(event) => setSpeed(Number(event.target.value))}
-              className="h-2 w-full cursor-pointer appearance-none rounded-full bg-gray-200 accent-emerald-500 disabled:cursor-not-allowed dark:bg-gray-800"
-            />
           </div>
-        </div>
+        ) : null}
       </div>
     </div>
   );
@@ -721,6 +727,7 @@ function ManualPage({
         setSpeed={setSpeed}
         lastCommand={lastCommand}
         sendCommand={sendCommand}
+        hideSideInfoOnMobile
       />
     </div>
   );
@@ -853,10 +860,12 @@ function TrainingPage({
             setSpeed={() => undefined}
             lastCommand={lastCommand}
             sendCommand={sendCommand}
+            hideSideInfoOnMobile
+            hideSpeedCard
           />
         </div>
 
-        <div className="space-y-5">
+        <div className="space-y-5 xl:block">
           <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Training Session</h3>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 sm:text-base">
@@ -898,7 +907,7 @@ function TrainingPage({
             </div>
           </div>
 
-          <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
+          <div className="hidden rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6 xl:block">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Training Status</h3>
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/60">
@@ -1052,9 +1061,8 @@ function AutonomousPage({
         </div>
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
-        <div className="space-y-5">
-          <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
+      <div className="space-y-5">
+        <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
             <div className="mb-5 flex items-center gap-3">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50 dark:border-emerald-500/20 dark:bg-emerald-500/10">
                 <Cpu className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
@@ -1136,8 +1144,9 @@ function AutonomousPage({
                 Stop Autonomous
               </button>
             </div>
-          </div>
+        </div>
 
+        <div className="grid items-start gap-5 xl:grid-cols-[1.18fr_0.82fr]">
           <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
             <div className="mb-4 flex items-center gap-2">
               <Camera className="h-5 w-5 text-gray-400 dark:text-gray-500" />
@@ -1145,98 +1154,98 @@ function AutonomousPage({
             </div>
             <div className="overflow-hidden rounded-3xl border border-gray-200 bg-gray-950 dark:border-gray-800">
               {streamUrl ? (
-                <img src={streamUrl} alt="Live Pi camera stream" className="aspect-video w-full object-cover" />
+                <img src={streamUrl} alt="Live Pi camera stream" className="aspect-[16/9] max-h-[23rem] w-full object-cover" />
               ) : (
-                <div className="flex aspect-video items-center justify-center text-sm text-gray-400">
+                <div className="flex aspect-[16/9] max-h-[23rem] items-center justify-center text-sm text-gray-400">
                   Live stream preparing...
                 </div>
               )}
             </div>
           </div>
-        </div>
 
-        <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Autonomous Status</h3>
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                The Pi pauses progress during ultrasonic stops and servo breaks, then resumes the same saved step.
-              </p>
+          <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Autonomous Status</h3>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  The Pi pauses progress during ultrasonic stops and servo breaks, then resumes the same saved step.
+                </p>
+              </div>
+              {loading ? <Loader2 className="h-5 w-5 animate-spin text-gray-400" /> : null}
             </div>
-            {loading ? <Loader2 className="h-5 w-5 animate-spin text-gray-400" /> : null}
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/60">
+                <p className="text-xs uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Selected</p>
+                <p className="mt-2 text-base font-semibold text-gray-900 dark:text-white">
+                  {status?.profile_name || selectedProfile?.name || "No profile selected"}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/60">
+                <p className="text-xs uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Current action</p>
+                <p className="mt-2 text-base font-semibold text-gray-900 dark:text-white">
+                  {formatDirection(status?.current_direction || "S")}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/60">
+                <p className="text-xs uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Pause state</p>
+                <p className="mt-2 text-base font-semibold text-gray-900 dark:text-white">
+                  {formatPauseReason(status?.paused_reason || null)}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/60">
+                <p className="text-xs uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Obstacle flag</p>
+                <p className={`mt-2 text-base font-semibold ${status?.obstacle ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+                  {status?.obstacle ? "Detected" : "Clear"}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5">
+              <div className="mb-2 flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
+                <span>Replay progress</span>
+                <span>{progressPercent}%</span>
+              </div>
+              <div className="h-3 rounded-full bg-gray-200 dark:bg-gray-800">
+                <div className="h-3 rounded-full bg-emerald-500 transition-all" style={{ width: `${progressPercent}%` }} />
+              </div>
+              <div className="mt-2 flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
+                <span>{formatDuration(status?.progress_ms ?? 0)}</span>
+                <span>{formatDuration(status?.total_duration_ms ?? selectedProfile?.total_duration_ms ?? 0)}</span>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 dark:border-emerald-500/20 dark:bg-emerald-950/20">
+                <p className="text-xs uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300">PWM</p>
+                <p className="mt-2 text-lg font-semibold text-emerald-800 dark:text-emerald-100">{status?.speed_pwm ?? AUTONOMOUS_PWM}</p>
+              </div>
+              <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 dark:border-sky-500/20 dark:bg-sky-950/20">
+                <p className="text-xs uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300">Segments</p>
+                <p className="mt-2 text-lg font-semibold text-sky-800 dark:text-sky-100">
+                  {Math.max((status?.current_segment_index ?? -1) + 1, 0)} / {status?.total_segments ?? selectedProfile?.segment_count ?? 0}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-500/20 dark:bg-amber-950/20">
+                <p className="text-xs uppercase tracking-[0.18em] text-amber-700 dark:text-amber-300">Servo breaks</p>
+                <p className="mt-2 text-lg font-semibold text-amber-800 dark:text-amber-100">
+                  {status?.breaks_taken ?? 0} / 2
+                </p>
+              </div>
+            </div>
+
+            {status?.started_at ? (
+              <div className="mt-5 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 dark:border-gray-800 dark:bg-gray-950/60 dark:text-gray-300">
+                Started at: {formatIst(status.started_at)}
+              </div>
+            ) : null}
+
+            {status?.error ? (
+              <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/20 dark:bg-red-950/20 dark:text-red-200">
+                {status.error}
+              </div>
+            ) : null}
           </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/60">
-              <p className="text-xs uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Selected</p>
-              <p className="mt-2 text-base font-semibold text-gray-900 dark:text-white">
-                {status?.profile_name || selectedProfile?.name || "No profile selected"}
-              </p>
-            </div>
-            <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/60">
-              <p className="text-xs uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Current action</p>
-              <p className="mt-2 text-base font-semibold text-gray-900 dark:text-white">
-                {formatDirection(status?.current_direction || "S")}
-              </p>
-            </div>
-            <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/60">
-              <p className="text-xs uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Pause state</p>
-              <p className="mt-2 text-base font-semibold text-gray-900 dark:text-white">
-                {formatPauseReason(status?.paused_reason || null)}
-              </p>
-            </div>
-            <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/60">
-              <p className="text-xs uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Obstacle flag</p>
-              <p className={`mt-2 text-base font-semibold ${status?.obstacle ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>
-                {status?.obstacle ? "Detected" : "Clear"}
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-5">
-            <div className="mb-2 flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
-              <span>Replay progress</span>
-              <span>{progressPercent}%</span>
-            </div>
-            <div className="h-3 rounded-full bg-gray-200 dark:bg-gray-800">
-              <div className="h-3 rounded-full bg-emerald-500 transition-all" style={{ width: `${progressPercent}%` }} />
-            </div>
-            <div className="mt-2 flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
-              <span>{formatDuration(status?.progress_ms ?? 0)}</span>
-              <span>{formatDuration(status?.total_duration_ms ?? selectedProfile?.total_duration_ms ?? 0)}</span>
-            </div>
-          </div>
-
-          <div className="mt-5 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 dark:border-emerald-500/20 dark:bg-emerald-950/20">
-              <p className="text-xs uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300">PWM</p>
-              <p className="mt-2 text-lg font-semibold text-emerald-800 dark:text-emerald-100">{status?.speed_pwm ?? AUTONOMOUS_PWM}</p>
-            </div>
-            <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 dark:border-sky-500/20 dark:bg-sky-950/20">
-              <p className="text-xs uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300">Segments</p>
-              <p className="mt-2 text-lg font-semibold text-sky-800 dark:text-sky-100">
-                {Math.max((status?.current_segment_index ?? -1) + 1, 0)} / {status?.total_segments ?? selectedProfile?.segment_count ?? 0}
-              </p>
-            </div>
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-500/20 dark:bg-amber-950/20">
-              <p className="text-xs uppercase tracking-[0.18em] text-amber-700 dark:text-amber-300">Servo breaks</p>
-              <p className="mt-2 text-lg font-semibold text-amber-800 dark:text-amber-100">
-                {status?.breaks_taken ?? 0} / 2
-              </p>
-            </div>
-          </div>
-
-          {status?.started_at ? (
-            <div className="mt-5 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 dark:border-gray-800 dark:bg-gray-950/60 dark:text-gray-300">
-              Started at: {formatIst(status.started_at)}
-            </div>
-          ) : null}
-
-          {status?.error ? (
-            <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/20 dark:bg-red-950/20 dark:text-red-200">
-              {status.error}
-            </div>
-          ) : null}
         </div>
       </div>
     </div>
@@ -1279,7 +1288,7 @@ export default function BotControlPage() {
           </div>
         </div>
 
-        <div className="mb-6 inline-flex flex-wrap rounded-2xl border border-gray-200 bg-white p-1 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <div className="mb-6 flex gap-3 overflow-x-auto rounded-2xl border border-gray-200 bg-white p-1 shadow-sm [scrollbar-width:none] dark:border-gray-800 dark:bg-gray-900 [&::-webkit-scrollbar]:hidden">
           {[
             { key: "manual", label: "Manual" },
             { key: "training", label: "Manual Training" },
@@ -1288,7 +1297,7 @@ export default function BotControlPage() {
             <button
               key={item.key}
               onClick={() => setTab(item.key as PageTab)}
-              className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition-all ${
+              className={`min-w-[11.5rem] shrink-0 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all sm:min-w-0 ${
                 tab === item.key
                   ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/20"
                   : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"

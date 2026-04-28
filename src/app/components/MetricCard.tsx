@@ -14,9 +14,9 @@ export default function MetricCard({ title, subtitle, change, color, trend }: Me
   const isPositive = trend === "up";
 
   return (
-    <div className={`${color} relative overflow-hidden rounded-3xl p-6 text-white shadow-md sm:p-7`}>
+    <div className={`${color} group relative overflow-hidden rounded-3xl p-6 text-white shadow-md transition duration-300 hover:-translate-y-1 hover:shadow-xl sm:p-7`}>
       <div className="absolute right-0 top-0 h-32 w-32 translate-x-8 -translate-y-8 rounded-full bg-white/10" />
-      <div className="absolute bottom-0 left-0 h-20 w-20 -translate-x-6 translate-y-6 rounded-full bg-black/10" />
+      <div className="absolute bottom-0 left-0 h-20 w-20 -translate-x-6 translate-y-6 rounded-full bg-black/10 transition duration-300 group-hover:scale-110" />
 
       <div className="relative z-10">
         <div className="mb-4 flex items-start justify-between">
@@ -26,13 +26,13 @@ export default function MetricCard({ title, subtitle, change, color, trend }: Me
             </p>
             <h3 className="text-3xl font-bold tracking-tight sm:text-4xl">{title}</h3>
           </div>
-          <button className="rounded-lg p-1 text-white/50 transition-colors hover:bg-white/10 hover:text-white">
+          <button className="rounded-lg p-1 text-white/50 transition-all hover:scale-105 hover:bg-white/10 hover:text-white">
             <MoreHorizontal className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="mt-4 flex items-center gap-2">
-          <div className="rounded-full bg-white/20 p-1">
+        <div className="mt-4 flex items-center gap-2 transition duration-300 group-hover:translate-x-1">
+          <div className="rounded-full bg-white/20 p-1 transition duration-300 group-hover:bg-white/30">
             {isPositive ? (
               <TrendingUp className="h-3.5 w-3.5 text-white" />
             ) : (

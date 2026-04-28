@@ -256,7 +256,7 @@ export default function HistoryContent() {
       </div>
 
       <div className="px-6">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="flex gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {tabs.map((item) => {
             const Icon = item.icon;
             const active = tab === item.key;
@@ -264,7 +264,7 @@ export default function HistoryContent() {
               <button
                 key={item.key}
                 onClick={() => setTab(item.key)}
-                className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-left transition ${
+                className={`flex min-w-[14rem] shrink-0 items-center gap-3 rounded-2xl border px-4 py-3 text-left transition sm:min-w-[13rem] xl:min-w-0 xl:flex-1 ${
                   active
                     ? "border-emerald-300 bg-emerald-50 text-emerald-700 shadow-sm dark:border-emerald-500/30 dark:bg-emerald-950/20 dark:text-emerald-300"
                     : "border-gray-200 bg-white text-gray-600 hover:border-emerald-200 hover:text-gray-900 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400 dark:hover:border-emerald-500/20 dark:hover:text-white"

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Compass, FileStack, Gamepad2, History, Home, Leaf, MapPin, ShieldAlert } from "lucide-react";
+import { Bell, Compass, FileStack, Gamepad2, History, Home, Info, Leaf, MapPin, ShieldAlert } from "lucide-react";
 
 const NAV = [
   { icon: Home, label: "Dashboard", href: "/" },
@@ -12,6 +12,7 @@ const NAV = [
   { icon: ShieldAlert, label: "AI Threat Detection", href: "/ai-threat-det" },
   { icon: History, label: "History", href: "/history" },
   { icon: Gamepad2, label: "Bot Control", href: "/bot-control" },
+  { icon: Info, label: "About Us", href: "/about-us" },
   // { icon: Compass, label: "Explore More", href: "/explore-more" },
 ];
 
