@@ -1,202 +1,313 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Camera } from "lucide-react";
-import { useAuth, getGuestHistory } from "./AuthContext";
+import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, Camera, Droplets, Leaf, Thermometer, Waves } from "lucide-react";
+
 import { apiFetch } from "@/lib/api";
+import { getGuestHistory, useAuth } from "./AuthContext";
 
-function parseAnimalCard(item: any) {
-  const msg: string = item.message || "";
-  let statusLabel = "", statusColor = "", borderColor = "", headerBg = "", badgeBg = "", typeDisplay = "";
+type HistoryTab = "animal" | "plant" | "moisture" | "temperature" | "humidity";
 
-  if (msg.includes("✅ Threat") && msg.includes("Animal:")) {
-    statusLabel = "⚠️ Threat Detected"; statusColor = "text-red-500 dark:text-red-400"; borderColor = "border-red-400 dark:border-red-600"; headerBg = "bg-red-50 dark:bg-red-900/30"; badgeBg = "bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300"; typeDisplay = item.animal_type || "Unknown Animal";
-  } else if (msg.includes("Plant image given")) {
-    statusLabel = "🌿 Plant Detected"; statusColor = "text-emerald-600 dark:text-emerald-400"; borderColor = "border-emerald-400 dark:border-emerald-600"; headerBg = "bg-emerald-50 dark:bg-emerald-900/20"; badgeBg = "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300"; typeDisplay = "Plant (Not a Threat)";
-  } else if (msg.includes("Human detected")) {
-    statusLabel = "👤 Human Detected"; statusColor = "text-purple-600 dark:text-purple-400"; borderColor = "border-purple-300 dark:border-purple-600"; headerBg = "bg-purple-50 dark:bg-purple-900/20"; badgeBg = "bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300"; typeDisplay = "Human (Not an Animal)";
-  } else if (msg.includes("Not an animal")) {
-    statusLabel = "✅ Not an Animal"; statusColor = "text-slate-500 dark:text-slate-400"; borderColor = "border-slate-300 dark:border-slate-600"; headerBg = "bg-slate-50 dark:bg-slate-800/60"; badgeBg = "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"; typeDisplay = "Not an Animal";
-  } else if (msg.includes("very unclear") || msg.includes("species ambiguous") || msg.includes("Uncertain")) {
-    statusLabel = "⚠️ Unclear Image"; statusColor = "text-amber-600 dark:text-amber-400"; borderColor = "border-amber-400 dark:border-amber-600"; headerBg = "bg-amber-50 dark:bg-amber-900/20"; badgeBg = "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300"; typeDisplay = "Unclear Image";
-  } else if (item.threat_detected) {
-    statusLabel = "⚠️ Threat Detected"; statusColor = "text-red-500 dark:text-red-400"; borderColor = "border-red-400 dark:border-red-600"; headerBg = "bg-red-50 dark:bg-red-900/30"; badgeBg = "bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300"; typeDisplay = item.animal_type || "Unknown Animal";
-  } else {
-    statusLabel = "✅ All Clear"; statusColor = "text-emerald-600 dark:text-emerald-400"; borderColor = "border-emerald-400 dark:border-emerald-600"; headerBg = "bg-emerald-50 dark:bg-emerald-900/20"; badgeBg = "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300"; typeDisplay = item.animal_type !== "Unknown" ? item.animal_type : "No Animal";
-  }
-  return { statusLabel, statusColor, borderColor, headerBg, badgeBg, typeDisplay };
+type DetectionItem = Record<string, any>;
+
+type SensorItem = {
+  id: string;
+  moisture: number | null;
+  temperature: number | null;
+  humidity: number | null;
+  ph: number | null;
+  obstacle: boolean;
+  timestamp?: string | null;
+};
+
+const tabs: Array<{
+  key: HistoryTab;
+  label: string;
+  icon: any;
+}> = [
+  { key: "animal", label: "Animal History", icon: AlertTriangle },
+  { key: "plant", label: "Plant History", icon: Leaf },
+  { key: "moisture", label: "Moisture History", icon: Droplets },
+  { key: "temperature", label: "Temperature History", icon: Thermometer },
+  { key: "humidity", label: "Humidity History", icon: Waves },
+];
+
+function formatIst(value?: string | number | null) {
+  if (!value) return "No time available";
+  const parsed = typeof value === "number" ? new Date(value) : new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value);
+  return parsed.toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
 
-function parsePlantCard(item: any) {
-  const result: string = item.result || item.message || "";
-  let statusLabel = "", statusColor = "", borderColor = "", headerBg = "", badgeBg = "", typeDisplay = "";
-
-  if (result.includes("Animal image given")) {
-    statusLabel = "⚠️ Animal Detected"; statusColor = "text-red-500 dark:text-red-400"; borderColor = "border-red-400 dark:border-red-600"; headerBg = "bg-red-50 dark:bg-red-900/30"; badgeBg = "bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300"; typeDisplay = "Animal (Threat)";
-  } else if (result.includes("UNHEALTHY") || result.includes("Threat Detected")) {
-    statusLabel = "🌿 Unhealthy Plant"; statusColor = "text-orange-600 dark:text-orange-400"; borderColor = "border-orange-400 dark:border-orange-600"; headerBg = "bg-orange-50 dark:bg-orange-900/20"; badgeBg = "bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300"; typeDisplay = "Plant — Unhealthy";
-  } else if (result.includes("HEALTHY") || result.includes("No Threat Detected")) {
-    statusLabel = "🌿 Healthy Plant"; statusColor = "text-emerald-600 dark:text-emerald-400"; borderColor = "border-emerald-400 dark:border-emerald-600"; headerBg = "bg-emerald-50 dark:bg-emerald-900/20"; badgeBg = "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300"; typeDisplay = "Plant — Healthy";
-  } else if (result.includes("Human detected")) {
-    statusLabel = "👤 Human Detected"; statusColor = "text-purple-600 dark:text-purple-400"; borderColor = "border-purple-300 dark:border-purple-600"; headerBg = "bg-purple-50 dark:bg-purple-900/20"; badgeBg = "bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300"; typeDisplay = "Human (Not a Plant)";
-  } else if (result.includes("Not a plant")) {
-    statusLabel = "❌ Not a Plant"; statusColor = "text-slate-500 dark:text-slate-400"; borderColor = "border-slate-300 dark:border-slate-600"; headerBg = "bg-slate-50 dark:bg-slate-800/60"; badgeBg = "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"; typeDisplay = "Not a Plant";
-  } else if (result.includes("UNCLEAR") || result.includes("Unclear")) {
-    statusLabel = "⚠️ Unclear Image"; statusColor = "text-amber-600 dark:text-amber-400"; borderColor = "border-amber-400 dark:border-amber-600"; headerBg = "bg-amber-50 dark:bg-amber-900/20"; badgeBg = "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300"; typeDisplay = "Unclear Image";
-  } else {
-    statusLabel = "🌿 Plant Detection"; statusColor = "text-emerald-600 dark:text-emerald-400"; borderColor = "border-emerald-400 dark:border-emerald-600"; headerBg = "bg-emerald-50 dark:bg-emerald-900/20"; badgeBg = "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300"; typeDisplay = result || "Unknown";
+function isThresholdCrossed(item: SensorItem, tab: HistoryTab) {
+  if (tab === "moisture") return typeof item.moisture === "number" && item.moisture <= 30;
+  if (tab === "temperature") {
+    return (
+      typeof item.temperature === "number" && (item.temperature >= 35 || item.temperature <= 12)
+    );
   }
-  return { statusLabel, statusColor, borderColor, headerBg, badgeBg, typeDisplay };
+  return false;
 }
 
-function formatTime(ts: string | number) {
-  if (!ts) return "No date";
-  try {
-    // Handle both ISO string (MongoDB) and Unix timestamp (guest sessionStorage)
-    const date = typeof ts === "number"
-      ? new Date(ts)
-      : new Date(String(ts).endsWith("Z") ? ts : ts + "Z");
-    return date.toLocaleString();
-  } catch { return String(ts); }
+function DetectionCard({ item, tab }: { item: DetectionItem; tab: "animal" | "plant" }) {
+  const isAnimal = tab === "animal";
+  const imageUrl = item.image_b64 || null;
+  const headline = isAnimal
+    ? item.threat_detected
+      ? "Animal threat detected"
+      : "Animal check completed"
+    : String(item.result || item.message || "").toLowerCase().includes("unhealthy")
+      ? "Plant disease detected"
+      : "Plant check completed";
+
+  const tone = isAnimal
+    ? item.threat_detected
+      ? "border-red-200 bg-red-50/80 dark:border-red-500/20 dark:bg-red-950/20"
+      : "border-emerald-200 bg-emerald-50/70 dark:border-emerald-500/20 dark:bg-emerald-950/20"
+    : String(item.result || item.message || "").toLowerCase().includes("unhealthy")
+      ? "border-orange-200 bg-orange-50/80 dark:border-orange-500/20 dark:bg-orange-950/20"
+      : "border-emerald-200 bg-emerald-50/70 dark:border-emerald-500/20 dark:bg-emerald-950/20";
+
+  return (
+    <div className={`overflow-hidden rounded-3xl border ${tone}`}>
+      <div className="p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{headline}</h3>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{formatIst(item.timestamp)}</p>
+          </div>
+          {item.filename && (
+            <span className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
+              <Camera className="h-3.5 w-3.5" />
+              Camera
+            </span>
+          )}
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3 dark:border-gray-700 dark:bg-gray-900/80">
+            <p className="text-xs uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+              Result
+            </p>
+            <p className="mt-2 text-sm font-medium leading-6 text-gray-800 dark:text-gray-100">
+              {isAnimal
+                ? item.message || item.animal_type || "No animal result"
+                : item.result || item.message || "No plant result"}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3 dark:border-gray-700 dark:bg-gray-900/80">
+            <p className="text-xs uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+              Confidence
+            </p>
+            <p className="mt-2 text-base font-semibold text-gray-900 dark:text-white">
+              {typeof item.confidence === "number" ? `${item.confidence}%` : "Not available"}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {imageUrl ? (
+        <img src={imageUrl} alt="Detection frame" className="h-52 w-full object-cover" />
+      ) : null}
+    </div>
+  );
+}
+
+function SensorCard({ item, tab }: { item: SensorItem; tab: HistoryTab }) {
+  const crossed = isThresholdCrossed(item, tab);
+  const title =
+    tab === "moisture"
+      ? "Soil moisture reading"
+      : tab === "temperature"
+        ? "Temperature reading"
+        : "Humidity reading";
+
+  const value =
+    tab === "moisture"
+      ? `${item.moisture ?? "N/A"}%`
+      : tab === "temperature"
+        ? `${item.temperature ?? "N/A"}°C`
+        : `${item.humidity ?? "N/A"}%`;
+
+  const message =
+    tab === "moisture"
+      ? crossed
+        ? "This reading shows the soil may need watering."
+        : "This reading stayed within the normal moisture range."
+      : tab === "temperature"
+        ? crossed
+          ? "This reading crossed the general crop comfort range."
+          : "This reading stayed within the usual crop range."
+        : "This is one of the last accepted humidity readings.";
+
+  return (
+    <div
+      className={`rounded-3xl border p-5 shadow-sm transition-colors ${
+        crossed
+          ? "border-amber-200 bg-amber-50 dark:border-amber-500/20 dark:bg-amber-950/20"
+          : "border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900"
+      }`}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{title}</h3>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{formatIst(item.timestamp)}</p>
+        </div>
+        {crossed ? (
+          <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+            Threshold crossed
+          </span>
+        ) : null}
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-700 dark:bg-gray-950/60">
+          <p className="text-xs uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+            Value
+          </p>
+          <p className="mt-2 text-xl font-bold text-gray-900 dark:text-white">{value}</p>
+        </div>
+        <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-700 dark:bg-gray-950/60">
+          <p className="text-xs uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+            Meaning
+          </p>
+          <p className="mt-2 text-sm font-medium leading-6 text-gray-800 dark:text-gray-100">
+            {message}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function HistoryContent() {
   const { user, isGuest, loading: authLoading } = useAuth();
-  const [records, setRecords] = useState<any[]>([]);
-  const [type, setType] = useState<"animal" | "plant">("animal");
+  const [tab, setTab] = useState<HistoryTab>("animal");
+  const [detectionRecords, setDetectionRecords] = useState<Record<"animal" | "plant", DetectionItem[]>>({
+    animal: [],
+    plant: [],
+  });
+  const [sensorRecords, setSensorRecords] = useState<SensorItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Wait for auth to finish loading before fetching
     if (authLoading) return;
 
-    setLoading(true);
-    setRecords([]);
+    let active = true;
+    const load = async () => {
+      setLoading(true);
+      try {
+        if (isGuest) {
+          const guestHistory = getGuestHistory();
+          if (!active) return;
+          setDetectionRecords({
+            animal: guestHistory.filter((item: any) => item.mode === "animal").reverse(),
+            plant: guestHistory.filter((item: any) => item.mode === "plant").reverse(),
+          });
+        } else {
+          const [animalRes, plantRes] = await Promise.all([
+            apiFetch(`/api/animal/history?user_id=${user!.id}`),
+            apiFetch(`/api/plant/history?user_id=${user!.id}`),
+          ]);
+          const [animalJson, plantJson] = await Promise.all([animalRes.json(), plantRes.json()]);
+          if (!active) return;
+          setDetectionRecords({
+            animal: animalJson.success ? animalJson.data : [],
+            plant: plantJson.success ? plantJson.data : [],
+          });
+        }
 
-    if (isGuest) {
-      // ── Guest: read from sessionStorage ──
-      const guestRecs = getGuestHistory()
-        .filter((r: any) => r.mode === type)
-        .reverse();
-      setRecords(guestRecs);
-      setLoading(false);
-      return;
+        const soilRes = await apiFetch("/api/soil/history");
+        const soilJson = await soilRes.json();
+        if (!active) return;
+        setSensorRecords(soilJson.success ? soilJson.data : []);
+      } catch {
+        if (!active) return;
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    void load();
+  }, [authLoading, isGuest, user]);
+
+  const currentItems = useMemo(() => {
+    if (tab === "animal" || tab === "plant") {
+      return detectionRecords[tab];
     }
-
-    // ── Logged in: fetch from MongoDB filtered by user_id ──
-    const path = type === "animal"
-      ? `/api/animal/history?user_id=${user!.id}`
-      : `/api/plant/history?user_id=${user!.id}`;
-
-    apiFetch(path)
-      .then(res => res.json())
-      .then(data => { if (data.success) setRecords(data.data); })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-
-  }, [type, user, isGuest, authLoading]);
-
-  const isCamCapture = (item: any, mode: "animal" | "plant") => {
-    if (item.filename?.startsWith("apicam") || item.filename?.startsWith("ppicam") || item.filename?.startsWith("autocam")) return true;
-    // Guest records from camera have no filename but have imageMode
-    return false;
-  };
-
-  const renderCard = (item: any, mode: "animal" | "plant") => {
-    const parsed = mode === "animal" ? parseAnimalCard(item) : parsePlantCard(item);
-    const { statusLabel, statusColor, borderColor, headerBg, badgeBg, typeDisplay } = parsed;
-    const confidence = item.confidence ?? 0;
-    const timestamp  = item.timestamp;
-    // Image: use base64 if available, else URL
-    const imageUrl   = item.image_b64 || null;
-    const camCapture = isCamCapture(item, mode);
-
-    return (
-      <div key={item._id || item.timestamp} className={`rounded-xl border ${borderColor} overflow-hidden bg-white dark:bg-gray-900 shadow-sm hover:shadow-md transition-shadow duration-200`}>
-        {/* Header */}
-        <div className={`${headerBg} px-4 py-3 flex items-center justify-between border-b ${borderColor}`}>
-          <span className={`font-semibold text-sm ${statusColor}`}>{statusLabel}</span>
-          <div className="flex items-center gap-2">
-            {camCapture && (
-              <div className="flex items-center gap-1 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded-full">
-                <Camera className="w-3 h-3" />
-                <span className="text-xs font-medium">Camera</span>
-              </div>
-            )}
-            <span className="text-xs text-gray-400 dark:text-gray-500">{formatTime(timestamp)}</span>
-          </div>
-        </div>
-        {/* Body */}
-        <div className="px-4 py-3 space-y-2">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 w-20 shrink-0">Type</span>
-            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${badgeBg}`}>{typeDisplay}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 w-20 shrink-0">Confidence</span>
-            <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">{confidence > 0 ? `${confidence}%` : "—"}</span>
-          </div>
-        </div>
-        {/* Image */}
-        {imageUrl && (
-          <img src={imageUrl} className="w-full h-40 object-cover" alt="detection" />
-        )}
-      </div>
-    );
-  };
+    return sensorRecords;
+  }, [detectionRecords, sensorRecords, tab]);
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-12 transition-colors duration-200">
-
-      <div className="px-6 pt-6 pb-4">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Detection History</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          {isGuest ? "Guest session — history clears on refresh" : `Showing history for ${user?.name}`}
+    <div className="min-h-screen bg-gray-50 pb-12 transition-colors duration-200 dark:bg-gray-950">
+      <div className="px-6 pb-4 pt-6">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white sm:text-3xl">History</h1>
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 sm:text-base">
+          Review saved animal, plant, and accepted sensor readings from your offline Agri Bot system.
         </p>
       </div>
 
-      <div className="px-6 mb-6">
-        <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-1 gap-1">
-          <button onClick={() => setType("animal")}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-150 ${type === "animal" ? "bg-green-600 text-white shadow-sm" : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"}`}>
-            🐾 Animal History
-          </button>
-          <button onClick={() => setType("plant")}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-150 ${type === "plant" ? "bg-green-600 text-white shadow-sm" : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"}`}>
-            🌿 Plant History
-          </button>
+      <div className="px-6">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          {tabs.map((item) => {
+            const Icon = item.icon;
+            const active = tab === item.key;
+            return (
+              <button
+                key={item.key}
+                onClick={() => setTab(item.key)}
+                className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-left transition ${
+                  active
+                    ? "border-emerald-300 bg-emerald-50 text-emerald-700 shadow-sm dark:border-emerald-500/30 dark:bg-emerald-950/20 dark:text-emerald-300"
+                    : "border-gray-200 bg-white text-gray-600 hover:border-emerald-200 hover:text-gray-900 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400 dark:hover:border-emerald-500/20 dark:hover:text-white"
+                }`}
+              >
+                <Icon className="h-5 w-5 shrink-0" />
+                <span className="text-sm font-semibold sm:text-base">{item.label}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {loading && (
-        <div className="px-6 grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[1,2,3,4,5,6].map(i => (
-            <div key={i} className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-900 animate-pulse">
-              <div className="h-12 bg-gray-100 dark:bg-gray-800" />
-              <div className="px-4 py-3 space-y-2">
-                <div className="h-4 bg-gray-100 dark:bg-gray-800 rounded w-3/4" />
-                <div className="h-4 bg-gray-100 dark:bg-gray-800 rounded w-1/2" />
-              </div>
-              <div className="h-40 bg-gray-100 dark:bg-gray-800" />
-            </div>
-          ))}
-        </div>
-      )}
-
-      {!loading && records.length === 0 && (
-        <div className="px-6 flex flex-col items-center justify-center py-20 text-gray-400 dark:text-gray-600">
-          <p className="text-4xl mb-3">{type === "animal" ? "🐾" : "🌿"}</p>
-          <p className="text-sm font-medium">No {type} detection history yet</p>
-          {isGuest && <p className="text-xs mt-1 text-gray-400">Sign in to keep history permanently</p>}
-        </div>
-      )}
-
-      {!loading && records.length > 0 && (
-        <div className="px-6 grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {records.map(item => renderCard(item, type))}
-        </div>
-      )}
-
+      <div className="px-6 pt-6">
+        {loading ? (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <div
+                key={index}
+                className="h-56 animate-pulse rounded-3xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900"
+              />
+            ))}
+          </div>
+        ) : currentItems.length === 0 ? (
+          <div className="rounded-3xl border border-dashed border-gray-300 bg-white px-6 py-16 text-center text-gray-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400">
+            No saved records are available for this history section yet.
+          </div>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {tab === "animal" || tab === "plant"
+              ? (currentItems as DetectionItem[]).map((item) => (
+                  <DetectionCard
+                    key={item._id || item.record_id || item.filename || `${tab}-${item.timestamp || "row"}`}
+                    item={item}
+                    tab={tab}
+                  />
+                ))
+              : (currentItems as SensorItem[]).map((item) => (
+                  <SensorCard key={item.id} item={item} tab={tab} />
+                ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

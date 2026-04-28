@@ -10,15 +10,13 @@ import cv2
 from flask import Response
 
 from database import COLLECTIONS, get_collection, limit_collection
-from models.animal_main import predict as animal_predict
-from models.plant_main import predict as plant_predict
 
 
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 SESSION_DURATION_SECONDS = 10 * 60
-FRAME_SKIP = 5
+FRAME_SKIP = 3
 CAPTURE_INTERVAL_SECONDS = 0.2
 SAVE_COOLDOWN_SECONDS = 8
 STREAM_BOUNDARY = b"--frame"
@@ -31,6 +29,8 @@ _camera_handle = None
 _camera_kind: str | None = None
 _latest_frame: bytes | None = None
 _frame_counter = 0
+_animal_predictor = None
+_plant_predictor = None
 
 _states: dict[str, dict[str, Any]] = {
     "animal": {
@@ -81,6 +81,24 @@ def _iso(value: datetime | None) -> str | None:
 
 def _shared_active() -> bool:
     return any(mode_state["running"] for mode_state in _states.values())
+
+
+def _get_animal_predictor():
+    global _animal_predictor
+    if _animal_predictor is None:
+        from models.animal_main import predict as animal_predict
+
+        _animal_predictor = animal_predict
+    return _animal_predictor
+
+
+def _get_plant_predictor():
+    global _plant_predictor
+    if _plant_predictor is None:
+        from models.plant_main import predict as plant_predict
+
+        _plant_predictor = plant_predict
+    return _plant_predictor
 
 
 def _encode_frame(frame) -> bytes | None:
@@ -343,9 +361,9 @@ def _run_worker():
                 for mode in active_modes:
                     parsed: dict[str, Any]
                     if mode == "animal":
-                        parsed = _parse_animal_result(animal_predict(temp_path))
+                        parsed = _parse_animal_result(_get_animal_predictor()(temp_path))
                     else:
-                        plant_message, plant_confidence = plant_predict(temp_path)
+                        plant_message, plant_confidence = _get_plant_predictor()(temp_path)
                         parsed = _parse_plant_result(plant_message, plant_confidence)
 
                     with _lock:

@@ -18,7 +18,7 @@ def _sensor_notifications():
     timestamp = snapshot.get("timestamp") or snapshot.get("last_seen")
 
     if not snapshot.get("connected"):
-        notifications.append(
+        return [
             {
                 "id": "sensor-disconnected",
                 "type": "info",
@@ -27,16 +27,15 @@ def _sensor_notifications():
                 "source": "system",
                 "timestamp": timestamp,
             }
-        )
-        return notifications
+        ]
 
-    if snapshot.get("obstacle"):
+    if snapshot.get("obstacle") and snapshot.get("bot_running"):
         notifications.append(
             {
                 "id": "sensor-obstacle",
                 "type": "warning",
-                "title": "Obstacle Detected",
-                "message": "The ultrasonic sensor has detected something within the stop range.",
+                "title": "Bot Stopped for Safety",
+                "message": "Something is in front of the bot, so it has paused to avoid hitting it.",
                 "source": "ultrasonic",
                 "timestamp": timestamp,
             }
@@ -48,22 +47,33 @@ def _sensor_notifications():
             {
                 "id": "sensor-moisture",
                 "type": "warning",
-                "title": "Low Soil Moisture",
-                "message": f"Soil moisture is low at {moisture}%. Irrigation may be needed.",
+                "title": "Soil Looks Dry",
+                "message": f"Soil moisture is low at {moisture}%. This area may need watering soon.",
                 "source": "soil",
                 "timestamp": timestamp,
             }
         )
 
     temperature = snapshot.get("temperature")
-    if isinstance(temperature, (int, float)) and temperature >= 38:
+    if isinstance(temperature, (int, float)) and temperature >= 35:
         notifications.append(
             {
-                "id": "sensor-temperature",
-                "type": "warning",
-                "title": "High Temperature",
-                "message": f"Temperature is high at {temperature}°C near the sensor arm.",
-                "source": "dht",
+                "id": "sensor-temperature-high",
+                "type": "info",
+                "title": "Temperature is on the High Side",
+                "message": f"The crop area is warm at {temperature} degrees Celsius. Keep an eye on heat stress for common kharif and rabi crops.",
+                "source": "temperature",
+                "timestamp": timestamp,
+            }
+        )
+    elif isinstance(temperature, (int, float)) and temperature <= 12:
+        notifications.append(
+            {
+                "id": "sensor-temperature-low",
+                "type": "info",
+                "title": "Temperature is on the Low Side",
+                "message": f"The crop area is cool at {temperature} degrees Celsius. Sensitive crops may need attention in this weather.",
+                "source": "temperature",
                 "timestamp": timestamp,
             }
         )
@@ -73,8 +83,8 @@ def _sensor_notifications():
             {
                 "id": "sensor-stable",
                 "type": "success",
-                "title": "Sensors Stable",
-                "message": "No active threat is detected from the live sensor stream.",
+                "title": "Farm Readings Look Normal",
+                "message": "No urgent issue is being reported from the latest bot readings.",
                 "source": "system",
                 "timestamp": timestamp,
             }
@@ -115,14 +125,14 @@ def _plant_notifications(limit: int = 4):
     for row in rows:
         result = row.get("result", "") or row.get("message", "")
         lowered = result.lower()
-        if not ("unhealthy" in lowered or "animal image given" in lowered or "threat" in lowered):
+        if "unhealthy" not in lowered and "threat" not in lowered:
             continue
 
         notifications.append(
             {
                 "id": f"plant-{row.get('_id')}",
                 "type": "warning",
-                "title": "Plant Threat Detected",
+                "title": "Plant Disease Detected",
                 "message": result,
                 "source": "plant_detection",
                 "timestamp": _format_timestamp(row.get("timestamp")),

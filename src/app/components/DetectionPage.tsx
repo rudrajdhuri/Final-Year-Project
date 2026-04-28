@@ -3,12 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
-  Bot,
   Camera,
-  CheckCircle,
+  CheckCircle2,
   Flower2,
-  HelpCircle,
   Loader2,
+  RefreshCcw,
   Square,
   Upload,
 } from "lucide-react";
@@ -43,6 +42,14 @@ type AllStatuses = {
   stream_active: boolean;
 };
 
+type AutonomousEnvelope = {
+  success: boolean;
+  status: {
+    running: boolean;
+    profile_name: string | null;
+  };
+};
+
 function formatRemaining(seconds: number) {
   const safe = Math.max(0, seconds || 0);
   const mins = Math.floor(safe / 60);
@@ -50,116 +57,82 @@ function formatRemaining(seconds: number) {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
-function ResultCard({ result, mode }: { result: any; mode: Mode }) {
-  const msg = result?.message || result?.result || result?.error || "";
-  let style = {
-    wrap: "border-emerald-400 bg-emerald-50 dark:border-emerald-600 dark:bg-emerald-900/20",
-    title: "text-emerald-800 dark:text-emerald-300",
-    body: "text-emerald-700 dark:text-emerald-400",
-    icon: <CheckCircle className="h-7 w-7 shrink-0 text-emerald-500" />,
-    label: mode === "animal" ? "All clear" : "Healthy plant",
-  };
+function formatIst(value?: string | null) {
+  if (!value) return "Waiting for live result";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
 
-  if (result?.success === false) {
-    style = {
-      wrap: "border-amber-400 bg-amber-50 dark:border-amber-600 dark:bg-amber-900/20",
-      title: "text-amber-800 dark:text-amber-300",
-      body: "text-amber-700 dark:text-amber-400",
-      icon: <AlertTriangle className="h-7 w-7 shrink-0 text-amber-500" />,
-      label: "Detection error",
-    };
-  } else if (mode === "animal") {
-    if (result?.threat_detected) {
-      style = {
-        wrap: "border-red-400 bg-red-50 dark:border-red-600 dark:bg-red-900/20",
-        title: "text-red-800 dark:text-red-300",
-        body: "text-red-700 dark:text-red-400",
-        icon: <AlertTriangle className="h-7 w-7 shrink-0 text-red-500" />,
-        label: "Animal threat detected",
-      };
-    } else if (msg.toLowerCase().includes("human")) {
-      style = {
-        wrap: "border-purple-300 bg-purple-50 dark:border-purple-600 dark:bg-purple-900/20",
-        title: "text-purple-800 dark:text-purple-300",
-        body: "text-purple-700 dark:text-purple-400",
-        icon: <AlertTriangle className="h-7 w-7 shrink-0 text-purple-500" />,
-        label: "Human detected",
-      };
-    } else if (msg.toLowerCase().includes("unclear")) {
-      style = {
-        wrap: "border-amber-400 bg-amber-50 dark:border-amber-600 dark:bg-amber-900/20",
-        title: "text-amber-800 dark:text-amber-300",
-        body: "text-amber-700 dark:text-amber-400",
-        icon: <HelpCircle className="h-7 w-7 shrink-0 text-amber-500" />,
-        label: "Unclear frame",
-      };
-    }
-  } else {
-    if (msg.includes("UNHEALTHY")) {
-      style = {
-        wrap: "border-orange-400 bg-orange-50 dark:border-orange-600 dark:bg-orange-900/20",
-        title: "text-orange-800 dark:text-orange-300",
-        body: "text-orange-700 dark:text-orange-400",
-        icon: <AlertTriangle className="h-7 w-7 shrink-0 text-orange-500" />,
-        label: "Disease detected",
-      };
-    } else if (msg.toLowerCase().includes("animal image")) {
-      style = {
-        wrap: "border-red-400 bg-red-50 dark:border-red-600 dark:bg-red-900/20",
-        title: "text-red-800 dark:text-red-300",
-        body: "text-red-700 dark:text-red-400",
-        icon: <AlertTriangle className="h-7 w-7 shrink-0 text-red-500" />,
-        label: "Animal image given",
-      };
-    } else if (msg.toLowerCase().includes("not a plant")) {
-      style = {
-        wrap: "border-gray-300 bg-gray-50 dark:border-gray-600 dark:bg-gray-800/60",
-        title: "text-gray-700 dark:text-gray-300",
-        body: "text-gray-600 dark:text-gray-400",
-        icon: <HelpCircle className="h-7 w-7 shrink-0 text-gray-400" />,
-        label: "Not a plant",
-      };
-    } else if (msg.toLowerCase().includes("unclear")) {
-      style = {
-        wrap: "border-amber-400 bg-amber-50 dark:border-amber-600 dark:bg-amber-900/20",
-        title: "text-amber-800 dark:text-amber-300",
-        body: "text-amber-700 dark:text-amber-400",
-        icon: <HelpCircle className="h-7 w-7 shrink-0 text-amber-500" />,
-        label: "Unclear frame",
-      };
-    }
-  }
+function ResultCard({ result, mode }: { result: any; mode: Mode }) {
+  const text = result?.message || result?.result || result?.error || "";
+  const isAnimalThreat = mode === "animal" && result?.threat_detected;
+  const isPlantThreat = mode === "plant" && String(text).toLowerCase().includes("unhealthy");
+  const isError = result?.success === false;
+
+  const theme = isError
+    ? {
+        border: "border-red-200 bg-red-50 dark:border-red-500/20 dark:bg-red-950/20",
+        icon: "text-red-500",
+        title: "Detection error",
+      }
+    : isAnimalThreat || isPlantThreat
+      ? {
+          border:
+            mode === "animal"
+              ? "border-red-200 bg-red-50 dark:border-red-500/20 dark:bg-red-950/20"
+              : "border-orange-200 bg-orange-50 dark:border-orange-500/20 dark:bg-orange-950/20",
+          icon: mode === "animal" ? "text-red-500" : "text-orange-500",
+          title: mode === "animal" ? "Animal threat detected" : "Plant disease detected",
+        }
+      : {
+          border: "border-emerald-200 bg-emerald-50 dark:border-emerald-500/20 dark:bg-emerald-950/20",
+          icon: "text-emerald-500",
+          title: mode === "animal" ? "No animal threat found" : "Healthy plant result",
+        };
+
+  const Icon = isError || isAnimalThreat || isPlantThreat ? AlertTriangle : CheckCircle2;
 
   return (
-    <div className={`rounded-3xl border-2 p-5 transition-colors duration-200 ${style.wrap}`}>
+    <div className={`rounded-3xl border p-5 shadow-sm ${theme.border}`}>
       <div className="flex items-start gap-4">
-        {style.icon}
+        <Icon className={`mt-1 h-6 w-6 shrink-0 ${theme.icon}`} />
         <div className="min-w-0 flex-1">
-          <p className={`mb-1 text-lg font-bold ${style.title}`}>{style.label}</p>
-          <p className={`mb-3 text-sm leading-7 sm:text-base ${style.body}`}>{msg}</p>
-          <div className="flex flex-wrap gap-3">
-            {typeof result?.confidence === "number" && result.confidence > 0 && (
-              <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-sm dark:border-gray-700 dark:bg-gray-900">
-                <p className="text-xs text-gray-500 dark:text-gray-400">Confidence</p>
-                <p className="text-sm font-semibold text-gray-900 dark:text-white">{result.confidence}%</p>
-              </div>
-            )}
-            {result?.animal_type && result.animal_type !== "Unknown" && (
-              <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-sm dark:border-gray-700 dark:bg-gray-900">
-                <p className="text-xs text-gray-500 dark:text-gray-400">Animal</p>
-                <p className="text-sm font-semibold capitalize text-gray-900 dark:text-white">
-                  {result.animal_type}
-                </p>
-              </div>
-            )}
-            {result?.timestamp && (
-              <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-sm dark:border-gray-700 dark:bg-gray-900">
-                <p className="text-xs text-gray-500 dark:text-gray-400">Recorded</p>
-                <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                  {new Date(result.timestamp).toLocaleTimeString()}
-                </p>
-              </div>
-            )}
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{theme.title}</h3>
+          <p className="mt-2 text-sm leading-7 text-gray-700 dark:text-gray-300 sm:text-base">{text}</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3 dark:border-gray-700 dark:bg-gray-900/80">
+              <p className="text-xs uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+                Confidence
+              </p>
+              <p className="mt-2 text-base font-semibold text-gray-900 dark:text-white">
+                {typeof result?.confidence === "number" ? `${result.confidence}%` : "Not available"}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3 dark:border-gray-700 dark:bg-gray-900/80">
+              <p className="text-xs uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+                Recorded
+              </p>
+              <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-white">
+                {formatIst(result?.timestamp)}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3 dark:border-gray-700 dark:bg-gray-900/80">
+              <p className="text-xs uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+                Source
+              </p>
+              <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-white">
+                {result?.filename ? "Pi camera" : "Uploaded image"}
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -171,30 +144,32 @@ function DetectionTab({
   mode,
   statuses,
   streamUrl,
+  autonomousRunning,
+  autonomousProfileName,
 }: {
   mode: Mode;
   statuses: AllStatuses | null;
   streamUrl: string | null;
+  autonomousRunning: boolean;
+  autonomousProfileName: string | null;
 }) {
   const { user, isGuest } = useAuth();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const pushedDetectionsRef = useRef<Record<string, string | null>>({ animal: null, plant: null });
+
   const status = statuses?.[mode] || null;
-  const otherMode: Mode = mode === "animal" ? "plant" : "animal";
-  const otherStatus = statuses?.[otherMode] || null;
+  const currentLiveResult = status?.last_detection || status?.last_result || null;
 
   const [uploadImage, setUploadImage] = useState<string | null>(null);
-  const [singleImage, setSingleImage] = useState<string | null>(null);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [manualResult, setManualResult] = useState<any>(null);
-  const [detectBusy, setDetectBusy] = useState(false);
   const [captureBusy, setCaptureBusy] = useState(false);
+  const [detectBusy, setDetectBusy] = useState(false);
   const [sessionBusy, setSessionBusy] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const pushedDetectionsRef = useRef<Record<string, string | null>>({ animal: null, plant: null });
 
   useEffect(() => {
     const latestDetectionId = status?.last_detection?.record_id || null;
-    if (!isGuest || !latestDetectionId || pushedDetectionsRef.current[mode] === latestDetectionId) {
-      return;
-    }
+    if (!isGuest || !latestDetectionId || pushedDetectionsRef.current[mode] === latestDetectionId) return;
 
     pushedDetectionsRef.current[mode] = latestDetectionId;
     pushGuestHistory({
@@ -205,34 +180,44 @@ function DetectionTab({
     });
   }, [isGuest, mode, status]);
 
+  const controlsLocked = captureBusy || detectBusy || sessionBusy;
+  const liveSessionRunning = Boolean(status?.running);
+  const showAutonomousOnly = autonomousRunning;
+  const showManualStopOnly = liveSessionRunning && !showAutonomousOnly;
+  const showIdleControls = !liveSessionRunning && !showAutonomousOnly;
+  const bigBoxImage = uploadImage || previewImage;
+  const title = mode === "animal" ? "Animal Detection" : "Plant Disease Detection";
+
   const handleFile = (file: File) => {
     const reader = new FileReader();
     reader.onloadend = () => {
-      setUploadImage(reader.result as string);
+      const dataUrl = reader.result as string;
+      setUploadImage(dataUrl);
+      setPreviewImage(dataUrl);
       setManualResult(null);
+      void detectUploadedImage(dataUrl);
     };
     reader.readAsDataURL(file);
   };
 
-  const detectUpload = async () => {
-    if (!uploadImage) return;
+  const detectUploadedImage = async (imageBase64: string) => {
     setDetectBusy(true);
     setManualResult(null);
-    const endpoint = mode === "animal" ? "detect-animal" : "detect-plant";
 
     try {
-      const response = await apiFetch(`/api/${mode}/${endpoint}`, {
+      const endpoint = mode === "animal" ? "/api/animal/detect-animal" : "/api/plant/detect-plant";
+      const response = await apiFetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image_base64: uploadImage, user_id: user?.id || "guest" }),
+        body: JSON.stringify({ image_base64: imageBase64, user_id: user?.id || "guest" }),
       });
       const payload = await response.json();
       setManualResult(payload);
       if (isGuest && payload.success) {
-        pushGuestHistory({ ...payload, mode, timestamp: Date.now(), image_b64: payload.image_b64 || uploadImage });
+        pushGuestHistory({ ...payload, mode, timestamp: Date.now(), image_b64: payload.image_b64 || imageBase64 });
       }
     } catch {
-      setManualResult({ success: false, error: "Backend connection failed" });
+      setManualResult({ success: false, error: "Detection request failed." });
     } finally {
       setDetectBusy(false);
     }
@@ -240,11 +225,11 @@ function DetectionTab({
 
   const captureOnce = async () => {
     setCaptureBusy(true);
-    setSingleImage(null);
     setManualResult(null);
 
     try {
-      const response = await apiFetch(`/api/${mode}/capture-camera`, {
+      const endpoint = mode === "animal" ? "/api/animal/capture-camera" : "/api/plant/capture-camera";
+      const response = await apiFetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: user?.id || "guest" }),
@@ -253,20 +238,21 @@ function DetectionTab({
       setManualResult(payload);
       if (payload.success) {
         const imageUrl =
-          payload.image_b64 || (await getApiUrl(`/api/${mode}/image/${payload.filename}?t=${Date.now()}`));
-        setSingleImage(imageUrl);
+          payload.image_b64 ||
+          (await getApiUrl(`/api/${mode}/image/${payload.filename}?t=${Date.now()}`));
+        setPreviewImage(imageUrl);
         if (isGuest) {
           pushGuestHistory({ ...payload, mode, timestamp: Date.now(), image_b64: payload.image_b64 || "" });
         }
       }
     } catch {
-      setManualResult({ success: false, error: "Bot camera capture failed" });
+      setManualResult({ success: false, error: "Bot camera capture failed." });
     } finally {
       setCaptureBusy(false);
     }
   };
 
-  const startSession = async () => {
+  const startLiveDetection = async () => {
     setSessionBusy(true);
     try {
       await apiFetch(`/api/auto/start/${mode}`, {
@@ -275,13 +261,13 @@ function DetectionTab({
         body: JSON.stringify({ user_id: user?.id || "guest" }),
       });
       setManualResult(null);
-      setSingleImage(null);
+      setPreviewImage(null);
     } finally {
       setSessionBusy(false);
     }
   };
 
-  const stopSession = async () => {
+  const stopLiveDetection = async () => {
     setSessionBusy(true);
     try {
       await apiFetch(`/api/auto/stop/${mode}`, { method: "POST" });
@@ -290,246 +276,165 @@ function DetectionTab({
     }
   };
 
-  const liveResult = status?.last_detection || status?.last_result || null;
-
-  const modeTitle = mode === "animal" ? "Animal Detection" : "Plant Detection";
-  const startLabel = mode === "animal" ? "Start Animal Detection" : "Start Plant Detection";
+  const resetState = () => {
+    setUploadImage(null);
+    setPreviewImage(null);
+    setManualResult(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <div className="grid gap-6 xl:grid-cols-[1.55fr_0.95fr]">
-        <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white sm:text-2xl">
-                Live Pi Camera
-              </h2>
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 sm:text-base">
-                Shared live camera stream for both models. Inference runs on every 5th frame.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {status?.running && (
-                <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
-                  {modeTitle} running
-                </span>
-              )}
-              {otherStatus?.running && (
-                <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-sky-600 dark:bg-sky-500/10 dark:text-sky-400">
-                  {otherMode} also running
-                </span>
-              )}
-            </div>
-          </div>
-
-          <div className="overflow-hidden rounded-3xl border border-gray-200 bg-gray-950 dark:border-gray-700">
-            {statuses?.stream_active && streamUrl ? (
-              <img src={streamUrl} alt="Live Pi camera stream" className="aspect-video w-full object-cover" />
-            ) : (
-              <div className="flex aspect-video flex-col items-center justify-center gap-4 px-6 text-center">
-                <Camera className="h-12 w-12 text-gray-500" />
-                <div>
-                  <p className="text-lg font-semibold text-white">Live stream is idle</p>
-                  <p className="mt-2 text-sm text-gray-300 sm:text-base">
-                    Start a detection session and the Pi camera feed will appear here.
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="mt-5 grid gap-4 md:grid-cols-3">
-            <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/50">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
-                Remaining
-              </p>
-              <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">
-                {formatRemaining(status?.remaining_seconds || 0)}
-              </p>
-            </div>
-            <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/50">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
-                Saved Detections
-              </p>
-              <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">
-                {status?.detection_count || 0}
-              </p>
-            </div>
-            <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/50">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
-                Session Length
-              </p>
-              <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">
-                {Math.round((status?.duration_seconds || 600) / 60)} min
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-5">
-          <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
-            <div className="mb-4 flex items-center gap-3">
-              {mode === "animal" ? (
-                <Bot className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
-              ) : (
-                <Flower2 className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
-              )}
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white sm:text-xl">
-                  {modeTitle} Session
-                </h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400 sm:text-base">
-                  Continuous live monitoring for 10 minutes with reduced-power inference.
-                </p>
-              </div>
-            </div>
-
-            {!status?.running ? (
-              <button
-                onClick={startSession}
-                disabled={sessionBusy}
-                className="w-full rounded-2xl bg-emerald-500 px-5 py-4 text-base font-semibold text-white shadow-lg shadow-emerald-500/20 transition-all hover:bg-emerald-600 disabled:opacity-60"
-              >
-                {sessionBusy ? "Starting..." : startLabel}
-              </button>
-            ) : (
-              <button
-                onClick={stopSession}
-                disabled={sessionBusy}
-                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-red-600 px-5 py-4 text-base font-semibold text-white shadow-lg shadow-red-500/20 transition-all hover:bg-red-700 disabled:opacity-60"
-              >
-                <Square className="h-5 w-5" />
-                {sessionBusy ? "Stopping..." : "Stop Detection"}
-              </button>
-            )}
-
-            {status?.completed && !status?.running && (
-              <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
-                Detection complete. The 10-minute session finished automatically.
-              </div>
-            )}
-
-            {status?.error && (
-              <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
-                {status.error}
-              </div>
-            )}
-          </div>
-
-          <div className="rounded-3xl border border-sky-200 bg-sky-50 p-5 shadow-sm dark:border-sky-500/20 dark:bg-sky-950/20 sm:p-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sky-600 dark:text-sky-300">
-              Session Rules
+    <div className="space-y-6">
+      <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white sm:text-2xl">{title}</h2>
+            <p className="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400 sm:text-base">
+              Upload a photo, capture one frame from the Pi camera, or start the shared live
+              detection stream. The frontend can show the full live feed while the model checks every
+              3rd frame in the backend.
             </p>
-            <ul className="mt-3 space-y-2 text-sm leading-6 text-sky-900 dark:text-sky-100/90 sm:text-base">
-              <li>The camera stays live continuously while the session is running.</li>
-              <li>The model checks every 5th frame to reduce Pi CPU load.</li>
-              <li>Only relevant detections are saved to MongoDB and notifications.</li>
-              <li>Animal and plant sessions can overlap and share the same Pi camera stream.</li>
-            </ul>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {showAutonomousOnly ? (
+              <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-red-600 dark:bg-red-500/10 dark:text-red-400">
+                Autonomous mode active
+              </span>
+            ) : liveSessionRunning ? (
+              <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
+                Live detection running
+              </span>
+            ) : (
+              <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                Manual mode ready
+              </span>
+            )}
+          </div>
+        </div>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) handleFile(file);
+          }}
+        />
+
+        <div
+          onClick={() => {
+            if (showIdleControls) fileInputRef.current?.click();
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            if (!showIdleControls) return;
+            const file = event.dataTransfer.files?.[0];
+            if (file?.type.startsWith("image/")) handleFile(file);
+          }}
+          onDragOver={(event) => event.preventDefault()}
+          className={`overflow-hidden rounded-3xl border-2 border-dashed transition ${
+            showIdleControls
+              ? "cursor-pointer border-gray-300 bg-gray-50 hover:border-emerald-400 dark:border-gray-700 dark:bg-gray-950/40 dark:hover:border-emerald-500/40"
+              : "border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-950/40"
+          }`}
+        >
+          {showAutonomousOnly && statuses?.stream_active && streamUrl ? (
+            <img src={streamUrl} alt="Shared autonomous live stream" className="aspect-video w-full object-cover" />
+          ) : liveSessionRunning && statuses?.stream_active && streamUrl ? (
+            <img src={streamUrl} alt="Manual live detection stream" className="aspect-video w-full object-cover" />
+          ) : bigBoxImage ? (
+            <img src={bigBoxImage} alt="Selected detection preview" className="aspect-video w-full object-contain bg-black/90" />
+          ) : (
+            <div className="flex aspect-video flex-col items-center justify-center px-6 text-center">
+              <Upload className="mb-4 h-12 w-12 text-gray-400 dark:text-gray-500" />
+              <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                Click here to upload an image
+              </p>
+              <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 sm:text-base">
+                Uploaded images are checked automatically. You can also use the Pi camera capture button or start live detection below.
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+          {showIdleControls ? (
+            <>
+              <button
+                onClick={captureOnce}
+                disabled={controlsLocked}
+                className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60"
+              >
+                {captureBusy || detectBusy ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Camera className="h-4 w-4" />
+                )}
+                {captureBusy ? "Capturing..." : "Capture from Pi Cam"}
+              </button>
+
+              <button
+                onClick={startLiveDetection}
+                disabled={controlsLocked}
+                className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-600 disabled:opacity-60"
+              >
+                {sessionBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
+                Start Live Detection
+              </button>
+
+              <button
+                onClick={resetState}
+                disabled={controlsLocked}
+                className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-gray-100 px-5 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-200 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+              >
+                <RefreshCcw className="h-4 w-4" />
+                Reset
+              </button>
+            </>
+          ) : showManualStopOnly ? (
+            <button
+              onClick={stopLiveDetection}
+              disabled={sessionBusy}
+              className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-red-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-60"
+            >
+              {sessionBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Square className="h-4 w-4" />}
+              Stop Detection
+            </button>
+          ) : null}
+        </div>
+
+        <div className="mt-5 grid gap-4 sm:grid-cols-3">
+          <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/60">
+            <p className="text-xs uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Remaining</p>
+            <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">
+              {formatRemaining(status?.remaining_seconds || 0)}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/60">
+            <p className="text-xs uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Saved detections</p>
+            <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">
+              {status?.detection_count || 0}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/60">
+            <p className="text-xs uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Mode</p>
+            <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-white">
+              {showAutonomousOnly
+                ? `Shared with autonomous profile ${autonomousProfileName || ""}`.trim()
+                : liveSessionRunning
+                  ? "Manual live detection"
+                  : "Single capture or upload"}
+            </p>
           </div>
         </div>
       </div>
 
-      {liveResult && <ResultCard result={liveResult} mode={mode} />}
-
-      <div className="grid gap-6 xl:grid-cols-2">
-        <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
-          <div className="mb-4 flex items-center gap-2">
-            <Upload className="h-5 w-5 text-gray-400 dark:text-gray-500" />
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Upload Image Test</h3>
-          </div>
-
-          <div
-            className={`flex min-h-52 items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed transition-colors ${
-              uploadImage
-                ? "border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/30"
-                : "cursor-pointer border-gray-300 bg-gray-50 hover:border-emerald-500 dark:border-gray-700 dark:bg-gray-800/30 dark:hover:border-emerald-500"
-            }`}
-            onClick={() => fileInputRef.current?.click()}
-            onDrop={(event) => {
-              event.preventDefault();
-              const file = event.dataTransfer.files?.[0];
-              if (file?.type.startsWith("image/")) handleFile(file);
-            }}
-            onDragOver={(event) => event.preventDefault()}
-          >
-            {uploadImage ? (
-              <img src={uploadImage} alt="Uploaded preview" className="max-h-80 w-full object-contain" />
-            ) : (
-              <div className="px-4 text-center">
-                <Upload className="mx-auto mb-3 h-12 w-12 text-gray-400 dark:text-gray-600" />
-                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 sm:text-base">
-                  Click to upload or drag and drop
-                </p>
-                <p className="mt-1 text-sm text-gray-400 dark:text-gray-500">PNG or JPG image</p>
-              </div>
-            )}
-          </div>
-
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) handleFile(file);
-            }}
-          />
-
-          <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-            <button
-              onClick={detectUpload}
-              disabled={!uploadImage || detectBusy}
-              className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-60"
-            >
-              {detectBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
-              {detectBusy ? "Detecting..." : mode === "animal" ? "Detect Animal Threat" : "Detect Plant Disease"}
-            </button>
-            <button
-              onClick={() => {
-                setUploadImage(null);
-                setManualResult(null);
-                if (fileInputRef.current) fileInputRef.current.value = "";
-              }}
-              className="rounded-2xl border border-gray-200 bg-gray-100 px-4 py-3 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-            >
-              Reset
-            </button>
-          </div>
-        </div>
-
-        <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
-          <div className="mb-4 flex items-center gap-2">
-            <Camera className="h-5 w-5 text-gray-400 dark:text-gray-500" />
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Single Camera Capture</h3>
-          </div>
-
-          <div className="flex min-h-52 items-center justify-center overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/30">
-            {singleImage ? (
-              <img src={singleImage} alt="Single Pi camera capture" className="max-h-80 w-full object-contain" />
-            ) : (
-              <div className="px-4 text-center">
-                <Camera className="mx-auto mb-3 h-12 w-12 text-gray-400 dark:text-gray-600" />
-                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 sm:text-base">
-                  Capture one frame from the Pi camera
-                </p>
-              </div>
-            )}
-          </div>
-
-          <button
-            onClick={captureOnce}
-            disabled={captureBusy}
-            className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-60"
-          >
-            {captureBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
-            {captureBusy ? "Capturing..." : "Capture from Pi Camera"}
-          </button>
-        </div>
-      </div>
-
-      {manualResult && <ResultCard result={manualResult} mode={mode} />}
+      {(manualResult || currentLiveResult) && (
+        <ResultCard result={manualResult || currentLiveResult} mode={mode} />
+      )}
     </div>
   );
 }
@@ -538,14 +443,13 @@ export default function DetectionPage() {
   const [tab, setTab] = useState<Mode>("animal");
   const [statuses, setStatuses] = useState<AllStatuses | null>(null);
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
+  const [autonomous, setAutonomous] = useState<AutonomousEnvelope["status"] | null>(null);
 
   useEffect(() => {
     let active = true;
-
     getApiUrl("/api/auto/stream").then((url) => {
       if (active) setStreamUrl(url);
     });
-
     return () => {
       active = false;
     };
@@ -554,35 +458,63 @@ export default function DetectionPage() {
   useEffect(() => {
     let active = true;
 
-    const loadStatus = async () => {
+    const load = async () => {
       try {
-        const response = await apiFetch("/api/auto/status");
-        const payload = await response.json();
+        const [statusResponse, autonomousResponse] = await Promise.all([
+          apiFetch("/api/auto/status"),
+          apiFetch("/api/bots/autonomous/status"),
+        ]);
+
+        const statusPayload = await statusResponse.json();
+        const autonomousPayload = await autonomousResponse.json();
         if (!active) return;
-        setStatuses(payload);
+
+        setStatuses(statusPayload);
+        setAutonomous(autonomousPayload?.status || null);
       } catch {
         if (!active) return;
       }
     };
 
-    loadStatus();
-    const timer = window.setInterval(loadStatus, 1000);
+    void load();
+    const timer = window.setInterval(load, 1000);
     return () => {
       active = false;
       window.clearInterval(timer);
     };
   }, []);
 
+  const activeStatus = statuses?.[tab];
+
   return (
     <div className="min-h-screen bg-gray-50 px-4 py-5 transition-colors duration-200 dark:bg-gray-950 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white sm:text-3xl">
-            AI Threat Detection
-          </h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 sm:text-base">
-            Shared live Pi camera detection for animal threats and plant disease sessions.
-          </p>
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white sm:text-3xl">
+              AI Threat Detection
+            </h1>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 sm:text-base">
+              Manual capture, manual live detection, and shared autonomous live monitoring from the
+              Pi camera.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-emerald-200 bg-white px-4 py-3 shadow-sm dark:border-emerald-500/20 dark:bg-gray-900">
+            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+              {tab === "animal" ? <AlertTriangle className="h-4 w-4" /> : <Flower2 className="h-4 w-4" />}
+              <span className="text-sm font-semibold">
+                {autonomous?.running
+                  ? "Autonomous detection is in control"
+                  : activeStatus?.running
+                    ? "Manual live detection is active"
+                    : "Detection controls are ready"}
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Inference checks every {activeStatus?.frame_skip || 3}rd frame while the live stream stays continuous.
+            </p>
+          </div>
         </div>
 
         <div className="mb-6 inline-flex rounded-2xl border border-gray-200 bg-white p-1 shadow-sm dark:border-gray-800 dark:bg-gray-900">
@@ -608,7 +540,13 @@ export default function DetectionPage() {
           </button>
         </div>
 
-        <DetectionTab mode={tab} statuses={statuses} streamUrl={streamUrl} />
+        <DetectionTab
+          mode={tab}
+          statuses={statuses}
+          streamUrl={streamUrl}
+          autonomousRunning={Boolean(autonomous?.running)}
+          autonomousProfileName={autonomous?.profile_name || null}
+        />
       </div>
     </div>
   );

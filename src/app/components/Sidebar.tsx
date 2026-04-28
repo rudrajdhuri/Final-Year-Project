@@ -10,7 +10,7 @@ const NAV = [
   { icon: MapPin, label: "Bot Location", href: "/bot-location" },
   { icon: FileStack, label: "Soil Sensor Readings", href: "/soil-sensor-readings" },
   { icon: ShieldAlert, label: "AI Threat Detection", href: "/ai-threat-det" },
-  { icon: History, label: "Detection History", href: "/history" },
+  { icon: History, label: "History", href: "/history" },
   { icon: Gamepad2, label: "Bot Control", href: "/bot-control" },
   // { icon: Compass, label: "Explore More", href: "/explore-more" },
 ];

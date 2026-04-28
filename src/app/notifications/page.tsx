@@ -18,7 +18,15 @@ function formatTime(value?: string | null) {
   if (!value) return "Waiting for live data";
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString();
+  return parsed.toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
 
 export default function NotificationsPage() {
@@ -123,6 +131,7 @@ export default function NotificationsPage() {
           {!loading &&
             items.map((item) => {
               const isWarning = item.type === "warning";
+              const isInfo = item.type === "info";
               const Icon =
                 item.type === "success"
                   ? CheckCircle2
@@ -136,7 +145,9 @@ export default function NotificationsPage() {
                   className={`rounded-3xl border bg-white p-5 shadow-sm transition-colors dark:bg-gray-900 sm:p-6 ${
                     isWarning
                       ? "border-red-200 dark:border-red-500/20"
-                      : "border-gray-200 dark:border-gray-800"
+                      : isInfo
+                        ? "border-sky-200 dark:border-sky-500/20"
+                        : "border-gray-200 dark:border-gray-800"
                   }`}
                 >
                   <div className="flex flex-wrap items-start gap-4">
@@ -144,7 +155,9 @@ export default function NotificationsPage() {
                       className={`rounded-2xl p-3 ${
                         isWarning
                           ? "bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400"
-                          : "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
+                          : isInfo
+                            ? "bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-400"
+                            : "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
                       }`}
                     >
                       <Icon className="h-6 w-6" />
@@ -159,7 +172,9 @@ export default function NotificationsPage() {
                           className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] ${
                             isWarning
                               ? "bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400"
-                              : "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
+                              : isInfo
+                                ? "bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-400"
+                                : "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
                           }`}
                         >
                           {item.source.replaceAll("_", " ")}

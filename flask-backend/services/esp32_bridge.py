@@ -8,6 +8,7 @@ from typing import Any
 from websockets.client import connect
 
 from database import COLLECTIONS, get_collection, limit_collection
+from services.runtime_state import get_runtime_state, is_arm_active, is_bot_running
 
 
 ESP32_SENSOR_WS_URL = os.getenv("ESP32_SENSOR_WS_URL", "ws://192.168.4.1/SensorData")
@@ -22,6 +23,13 @@ _sensor_state: dict[str, Any] = {
     "connected": False,
     "last_error": None,
     "last_seen": None,
+    "accepted_reading": {
+        "moisture": None,
+        "temperature": None,
+        "humidity": None,
+        "ph": None,
+        "timestamp": None,
+    },
     "reading": {
         "moisture": None,
         "temperature": None,
@@ -73,22 +81,32 @@ def _persist_sensor_reading(reading: dict[str, Any]):
     if _flask_app is None:
         return
 
-    with _flask_app.app_context():
-        sensor_col = get_collection(COLLECTIONS["SENSORS"])
-        sensor_col.insert_one(
-            {
+    if is_arm_active():
+        with _flask_app.app_context():
+            sensor_col = get_collection(COLLECTIONS["SENSORS"])
+            sensor_col.insert_one(
+                {
+                    "moisture": reading["moisture"],
+                    "temperature": reading["temperature"],
+                    "humidity": reading["humidity"],
+                    "ph": reading["ph"],
+                    "obstacle": reading["obstacle"],
+                    "source": "esp32",
+                    "timestamp": reading["timestamp"],
+                }
+            )
+            limit_collection(COLLECTIONS["SENSORS"], 10)
+
+        with _state_lock:
+            _sensor_state["accepted_reading"] = {
                 "moisture": reading["moisture"],
                 "temperature": reading["temperature"],
                 "humidity": reading["humidity"],
                 "ph": reading["ph"],
-                "obstacle": reading["obstacle"],
-                "source": "esp32",
                 "timestamp": reading["timestamp"],
             }
-        )
-        limit_collection(COLLECTIONS["SENSORS"], 10)
 
-    if reading["obstacle"] and not _last_obstacle_state:
+    if reading["obstacle"] and not _last_obstacle_state and is_bot_running():
         _record_actuator_event(
             "sensor_alert",
             "Obstacle detected by ultrasonic sensor. Bot should remain stopped.",
@@ -100,16 +118,21 @@ def _persist_sensor_reading(reading: dict[str, Any]):
 def get_sensor_snapshot() -> dict[str, Any]:
     with _state_lock:
         reading = dict(_sensor_state["reading"])
+        accepted = dict(_sensor_state["accepted_reading"])
+        runtime = get_runtime_state()
         return {
             "connected": _sensor_state["connected"],
             "last_error": _sensor_state["last_error"],
             "last_seen": _iso_timestamp(_sensor_state["last_seen"]),
-            "moisture": reading["moisture"],
-            "temperature": reading["temperature"],
-            "humidity": reading["humidity"],
-            "ph": reading["ph"],
+            "moisture": accepted["moisture"],
+            "temperature": accepted["temperature"],
+            "humidity": accepted["humidity"],
+            "ph": accepted["ph"],
             "obstacle": reading["obstacle"],
-            "timestamp": _iso_timestamp(reading["timestamp"]),
+            "timestamp": _iso_timestamp(accepted["timestamp"]),
+            "raw_timestamp": _iso_timestamp(reading["timestamp"]),
+            "arm_active": runtime["arm_active"],
+            "bot_running": runtime["bot_running"],
         }
 
 

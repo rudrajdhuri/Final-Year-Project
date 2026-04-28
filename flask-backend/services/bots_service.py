@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from database import COLLECTIONS, get_collection, limit_collection
 from services.autonomous_service import record_manual_command
 from services.esp32_bridge import get_sensor_history, get_sensor_snapshot
+from services.runtime_state import get_runtime_state, set_manual_direction, trigger_arm
 
 BOTS = [
     {
@@ -24,6 +25,7 @@ BOTS = [
 def get_all_bots():
     snapshot = get_sensor_snapshot()
     history = get_sensor_history(10)
+    runtime = get_runtime_state()
     latest_command = get_collection(COLLECTIONS["ACTUATORS"]).find_one(sort=[("timestamp", -1)])
 
     current_status = "Monitoring"
@@ -32,7 +34,7 @@ def get_all_bots():
     if not snapshot.get("connected"):
         current_status = "Waiting for ESP32"
         current_task = "Connect Raspberry Pi to the ESP32 hotspot stream"
-    elif snapshot.get("obstacle"):
+    elif snapshot.get("obstacle") and runtime.get("bot_running"):
         current_status = "Obstacle detected"
         current_task = "Stopped for safety"
     elif latest_command:
@@ -65,6 +67,8 @@ def get_all_bots():
             "temperature": snapshot.get("temperature"),
             "humidity": snapshot.get("humidity"),
             "obstacle": snapshot.get("obstacle"),
+            "arm_active": runtime.get("arm_active"),
+            "bot_running": runtime.get("bot_running"),
             "lastUpdate": snapshot.get("timestamp") or snapshot.get("last_seen") or "Live",
             "latitude": None,
             "longitude": None,
@@ -131,5 +135,9 @@ def log_bot_command(command):
         payload["message"] = command["message"]
     actuator_col.insert_one(payload)
     limit_collection(COLLECTIONS["ACTUATORS"], 10)
+    if payload["type"] == "movement":
+        set_manual_direction(payload.get("direction") or "S")
+    elif payload["type"] == "servo":
+        trigger_arm(4.0)
     record_manual_command(payload)
     return payload

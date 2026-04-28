@@ -141,7 +141,7 @@ export default function DashboardLayout({
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
 
         {/* FIX 7: h-14 matches sidebar header */}
-        <header className="bg-white dark:bg-gray-900 shadow-sm border-b border-gray-200 dark:border-gray-800 px-4 sm:px-6 shrink-0 transition-colors duration-200 h-14 flex items-center">
+        <header className="bg-white dark:bg-gray-900 shadow-sm border-b border-gray-200 dark:border-gray-800 px-4 sm:px-6 shrink-0 transition-colors duration-200 h-16 flex items-center">
           <div className="flex items-center justify-between w-full">
             <div className="flex items-center gap-4">
               <button

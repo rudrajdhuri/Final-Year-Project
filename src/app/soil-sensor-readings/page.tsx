@@ -23,12 +23,29 @@ type SoilPayload = {
   ph: number | null;
   connected: boolean;
   obstacle: boolean;
+  arm_active: boolean;
+  bot_running: boolean;
   timestamp?: string | null;
   history: SoilHistoryRow[];
 };
 
 function formatValue(value: number | null | undefined, suffix = "") {
   return typeof value === "number" ? `${value}${suffix}` : "Not available";
+}
+
+function formatIst(value?: string | null, withDate = false) {
+  if (!value) return withDate ? "No reading time yet" : "--:--";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    year: withDate ? "numeric" : undefined,
+    month: withDate ? "short" : undefined,
+    day: withDate ? "numeric" : undefined,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: withDate ? "2-digit" : undefined,
+  });
 }
 
 export default function SoilSensorPage() {
@@ -98,9 +115,7 @@ export default function SoilSensorPage() {
   const chartData = useMemo(
     () =>
       (data?.history || []).map((row) => ({
-        time: row.timestamp
-          ? new Date(row.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-          : "--:--",
+        time: formatIst(row.timestamp),
         moisture: row.moisture,
         temperature: row.temperature,
         humidity: row.humidity,
@@ -117,8 +132,9 @@ export default function SoilSensorPage() {
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white sm:text-3xl">
               Soil Sensor Readings
             </h1>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 sm:text-base">
-              Live arm-sensor values from the ESP32 stream and the last 10 MongoDB readings.
+            <p className="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400 sm:text-base">
+              This page shows only the verified readings taken while the sensor arm is down and
+              touching the soil. When the arm is up, the last accepted reading stays visible.
             </p>
           </div>
 
@@ -126,11 +142,15 @@ export default function SoilSensorPage() {
             <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
               <Activity className="h-4 w-4" />
               <span className="text-sm font-semibold">
-                {data?.connected ? "Sensor bridge live" : "Waiting for ESP32 stream"}
+                {data?.arm_active
+                  ? "Sensor arm is down"
+                  : data?.connected
+                    ? "Waiting for arm-down reading"
+                    : "Waiting for ESP32 stream"}
               </span>
             </div>
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {data?.timestamp ? new Date(data.timestamp).toLocaleString() : "No live timestamp yet"}
+              {formatIst(data?.timestamp, true)}
             </p>
           </div>
         </div>
@@ -167,63 +187,29 @@ export default function SoilSensorPage() {
           })}
         </div>
 
-        <div className="grid gap-6 xl:grid-cols-[1.65fr_1fr]">
-          <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
-            <div className="mb-5">
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white sm:text-2xl">
-                Dynamic Reading Chart
-              </h2>
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 sm:text-base">
-                Auto-scaled graph so even small value changes stay visible.
-              </p>
-            </div>
-
-            <Graph
-              data={chartData}
-              xKey="time"
-              showYAxis
-              height={360}
-              series={[
-                { key: "moisture", label: "Moisture", color: "#2563eb" },
-                { key: "temperature", label: "Temperature", color: "#f97316" },
-                { key: "humidity", label: "Humidity", color: "#10b981" },
-                { key: "ph", label: "pH", color: "#8b5cf6" },
-              ]}
-            />
-          </div>
-
-          <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
+        <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
+          <div className="mb-5">
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white sm:text-2xl">
-              Recent History
+              Verified Sensor Trend Chart
             </h2>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 sm:text-base">
-              Latest 10 readings stored locally in MongoDB.
+              The last 10 accepted arm-down readings are plotted here with an auto-scaled range so
+              even smaller changes stay visible on mobile and desktop.
             </p>
-
-            <div className="mt-5 space-y-3">
-              {(data?.history || []).slice().reverse().map((row) => (
-                <div
-                  key={row.id}
-                  className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/50"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                      {row.timestamp ? new Date(row.timestamp).toLocaleTimeString() : "No time"}
-                    </p>
-                    {row.obstacle && (
-                      <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-600 dark:bg-red-500/10 dark:text-red-400">
-                        Obstacle
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-400">
-                    Moisture {formatValue(row.moisture, "%")} | Temperature {formatValue(row.temperature, "°C")} |
-                    Humidity {formatValue(row.humidity, "%")} | pH {formatValue(row.ph)}
-                  </p>
-                </div>
-              ))}
-            </div>
           </div>
+
+          <Graph
+            data={chartData}
+            xKey="time"
+            showYAxis
+            height={420}
+            series={[
+              { key: "moisture", label: "Moisture", color: "#2563eb" },
+              { key: "temperature", label: "Temperature", color: "#f97316" },
+              { key: "humidity", label: "Humidity", color: "#10b981" },
+              { key: "ph", label: "pH", color: "#8b5cf6" },
+            ]}
+          />
         </div>
       </div>
     </div>

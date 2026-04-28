@@ -12,6 +12,8 @@ def get_soil_readings():
         "obstacle": snapshot.get("obstacle"),
         "connected": snapshot.get("connected"),
         "timestamp": snapshot.get("timestamp"),
+        "arm_active": snapshot.get("arm_active"),
+        "bot_running": snapshot.get("bot_running"),
         "history": get_sensor_history(10),
         "sensor_source": COLLECTIONS["SENSORS"],
     }

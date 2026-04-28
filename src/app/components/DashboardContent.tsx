@@ -1,21 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Activity, Droplets, ShieldAlert, Thermometer, Wind } from 'lucide-react';
+import { Activity, Bot, Leaf, ShieldAlert, Sprout, Waves } from 'lucide-react';
 
 import MetricCard from './MetricCard';
-import Graph from './graph';
 import { apiFetch } from '@/lib/api';
-
-type HistoryEntry = {
-  id: string;
-  moisture: number | null;
-  temperature: number | null;
-  humidity: number | null;
-  ph: number | null;
-  obstacle: boolean;
-  timestamp?: string | null;
-};
 
 type BotSummary = {
   soil_moisture?: number | null;
@@ -24,14 +13,14 @@ type BotSummary = {
   status?: string;
   task?: string;
   obstacle?: boolean;
-  graphData?: Array<Record<string, any>>;
-  history?: HistoryEntry[];
+  arm_active?: boolean;
+  bot_running?: boolean;
 };
 
 export default function DashboardContent() {
   const [botData, setBotData] = useState<BotSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<string>('Waiting for live sensor data');
+  const [lastUpdated, setLastUpdated] = useState<string>('Waiting for verified arm reading');
 
   useEffect(() => {
     let active = true;
@@ -49,7 +38,7 @@ export default function DashboardContent() {
 
         if (!active) return;
         setBotData(nextBot);
-        setLastUpdated(new Date().toLocaleTimeString());
+        setLastUpdated(new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
       } catch (err: any) {
         if (!active) return;
         setError(err.message || 'Unable to fetch dashboard data');
@@ -64,36 +53,34 @@ export default function DashboardContent() {
     };
   }, []);
 
-  const chartData = botData?.graphData || [];
   const isObstacle = Boolean(botData?.obstacle);
-
   const metrics = useMemo(
     () => [
       {
         title: typeof botData?.soil_moisture === 'number' ? `${botData.soil_moisture}%` : 'N/A',
         subtitle: 'Soil Moisture',
-        change: 'Live from ESP32 soil sensor',
+        change: botData?.arm_active ? 'Latest arm-down soil reading' : 'Waiting for next arm-down reading',
         color: 'bg-gradient-to-br from-blue-500 to-blue-700',
         trend: 'up' as const,
       },
       {
         title: typeof botData?.temperature === 'number' ? `${botData.temperature}°C` : 'N/A',
         subtitle: 'Temperature',
-        change: 'DHT real-time temperature',
+        change: botData?.arm_active ? 'Latest verified crop-zone reading' : 'Shows only arm-down readings',
         color: 'bg-gradient-to-br from-cyan-400 to-cyan-600',
         trend: 'up' as const,
       },
       {
         title: typeof botData?.humidity === 'number' ? `${botData.humidity}%` : 'N/A',
         subtitle: 'Humidity',
-        change: 'DHT real-time humidity',
+        change: botData?.arm_active ? 'Latest verified humidity reading' : 'Waiting for next valid reading',
         color: 'bg-gradient-to-br from-emerald-500 to-emerald-700',
         trend: 'up' as const,
       },
       {
         title: botData?.status || 'Waiting',
         subtitle: 'Bot Status',
-        change: isObstacle ? 'Obstacle detected by ultrasonic sensor' : botData?.task || 'Monitoring',
+        change: isObstacle ? 'Bot paused because something is ahead' : botData?.task || 'Monitoring',
         color: isObstacle
           ? 'bg-gradient-to-br from-rose-500 to-red-700'
           : 'bg-gradient-to-br from-violet-500 to-indigo-700',
@@ -117,7 +104,7 @@ export default function DashboardContent() {
             Live Farm Dashboard
           </h1>
           <p className="mt-1 text-sm text-gray-600 dark:text-gray-400 sm:text-base">
-            Real-time sensor readings from the ESP32 hotspot and Pi backend.
+            Real-time overview for offline bot monitoring, threat detection, and crop support.
           </p>
         </div>
 
@@ -130,132 +117,95 @@ export default function DashboardContent() {
         </div>
       </div>
 
-      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         {metrics.map((metric, index) => (
           <MetricCard key={index} {...metric} />
         ))}
       </div>
 
-      <div className="mb-6 grid grid-cols-1 gap-4 xl:grid-cols-[1.7fr_1fr]">
-        <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm transition-colors dark:border-gray-800 dark:bg-gray-900 sm:p-6">
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white sm:text-2xl">
-                Sensor Trend Overview
+      <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
+        <section className="overflow-hidden rounded-[2rem] border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div className="bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.18),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(59,130,246,0.12),_transparent_28%)] px-6 py-7 sm:px-8 sm:py-9">
+            <div className="max-w-3xl">
+              <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+                <Leaf className="h-4 w-4" />
+                Offline Smart Agriculture
+              </div>
+              <h2 className="text-2xl font-bold leading-tight text-gray-900 dark:text-white sm:text-4xl">
+                Agri Bot helps farmers monitor crop health, soil condition, and field safety from one local dashboard.
               </h2>
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 sm:text-base">
-                Last 10 live readings stored in the local MongoDB collection.
+              <p className="mt-4 max-w-2xl text-sm leading-7 text-gray-600 dark:text-gray-400 sm:text-base">
+                Built for Raspberry Pi and ESP32 hotspot use, the platform keeps working without internet and focuses on practical field support: clear readings, simple warnings, and bot controls that are easy to use in real farm conditions.
               </p>
             </div>
           </div>
+        </section>
 
-          <Graph
-            data={chartData}
-            xKey="time"
-            showYAxis
-            series={[
-              { key: 'moisture', label: 'Moisture', color: '#2563eb' },
-              { key: 'temperature', label: 'Temperature', color: '#f97316' },
-              { key: 'humidity', label: 'Humidity', color: '#10b981' },
-            ]}
-            height={340}
-          />
-        </div>
-
-        <div className="space-y-4">
-          <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm transition-colors dark:border-gray-800 dark:bg-gray-900">
-            <div className="flex items-center gap-3">
-              <div className="rounded-2xl bg-blue-50 p-3 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400">
-                <Droplets className="h-5 w-5" />
+        <section className="grid gap-4">
+          <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
+            <div className="flex items-start gap-3">
+              <div className="rounded-2xl bg-emerald-50 p-3 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
+                <Bot className="h-5 w-5" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Moisture Watch</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  {typeof botData?.soil_moisture === 'number'
-                    ? botData.soil_moisture <= 30
-                      ? 'Irrigation attention is recommended now.'
-                      : 'Moisture is within a stable working range.'
-                    : 'Waiting for moisture data from the arm sensor.'}
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Built for the field</h3>
+                <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400 sm:text-base">
+                  Manual and autonomous control stay connected to the same offline Pi backend, so the user always sees the bot’s real state.
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm transition-colors dark:border-gray-800 dark:bg-gray-900">
-            <div className="flex items-center gap-3">
-              <div className="rounded-2xl bg-orange-50 p-3 text-orange-600 dark:bg-orange-500/10 dark:text-orange-400">
-                <Thermometer className="h-5 w-5" />
+          <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
+            <div className="flex items-start gap-3">
+              <div className="rounded-2xl bg-sky-50 p-3 text-sky-600 dark:bg-sky-500/10 dark:text-sky-400">
+                <Waves className="h-5 w-5" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Temperature Watch</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  {typeof botData?.temperature === 'number'
-                    ? botData.temperature >= 38
-                      ? 'Heat is high around the crop area. Monitor stress closely.'
-                      : 'Temperature remains in a workable range.'
-                    : 'Waiting for DHT temperature data.'}
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Sensor readings that matter</h3>
+                <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400 sm:text-base">
+                  Soil, temperature, and humidity are shown only from valid arm-down sensing moments, so the operator sees useful values instead of noise.
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm transition-colors dark:border-gray-800 dark:bg-gray-900">
-            <div className="flex items-center gap-3">
+          <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
+            <div className="flex items-start gap-3">
+              <div className="rounded-2xl bg-amber-50 p-3 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400">
+                <Sprout className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Simple crop awareness</h3>
+                <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400 sm:text-base">
+                  The app combines model detections, moisture warnings, temperature hints, and obstacle events in language that is easier for users to act on quickly.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
+            <div className="flex items-start gap-3">
               <div
                 className={`rounded-2xl p-3 ${
                   isObstacle
                     ? 'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400'
-                    : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400'
+                    : 'bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400'
                 }`}
               >
-                {isObstacle ? <ShieldAlert className="h-5 w-5" /> : <Wind className="h-5 w-5" />}
+                <ShieldAlert className="h-5 w-5" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Obstacle Safety</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Live safety watch</h3>
+                <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400 sm:text-base">
                   {isObstacle
-                    ? 'Ultrasonic sensor sees an obstacle inside the stop range.'
-                    : 'No obstacle is currently being reported by the ultrasonic sensor.'}
+                    ? 'An obstacle is currently being reported while the bot is moving.'
+                    : 'The ultrasonic safety system is ready to warn only during active bot movement.'}
                 </p>
               </div>
             </div>
           </div>
-        </div>
-      </div>
-
-      <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm transition-colors dark:border-gray-800 dark:bg-gray-900 sm:p-6">
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white sm:text-2xl">
-              Last 10 Stored Readings
-            </h2>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 sm:text-base">
-              Local MongoDB keeps only the most recent 10 ESP32 readings for offline Pi use.
-            </p>
-          </div>
-        </div>
-
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          {(botData?.history || []).slice().reverse().map((entry) => (
-            <div
-              key={entry.id}
-              className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4 dark:border-gray-800 dark:bg-gray-950/50"
-            >
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                {entry.timestamp ? new Date(entry.timestamp).toLocaleTimeString() : 'No time'}
-              </p>
-              <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-400">
-                Moisture {typeof entry.moisture === 'number' ? `${entry.moisture}%` : 'N/A'}
-              </p>
-              <p className="text-sm leading-6 text-gray-600 dark:text-gray-400">
-                Temp {typeof entry.temperature === 'number' ? `${entry.temperature}°C` : 'N/A'}
-              </p>
-              <p className="text-sm leading-6 text-gray-600 dark:text-gray-400">
-                Humidity {typeof entry.humidity === 'number' ? `${entry.humidity}%` : 'N/A'}
-              </p>
-            </div>
-          ))}
-        </div>
+        </section>
       </div>
     </div>
   );

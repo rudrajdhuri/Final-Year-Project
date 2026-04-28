@@ -8,6 +8,7 @@ from bson import ObjectId
 from database import COLLECTIONS, get_collection, limit_collection
 from services.esp32_bridge import get_sensor_snapshot
 from services.live_detection_service import start_detection, stop_detection
+from services.runtime_state import clear_arm, set_autonomous_motion, trigger_arm
 
 try:
     from websockets.sync.client import connect as ws_connect
@@ -302,6 +303,7 @@ def _set_autonomous_state(**updates):
 
 def _pause_for_obstacle(direction: str) -> bool:
     _control_client.stop()
+    set_autonomous_motion(True, "S")
     _set_autonomous_state(paused_reason="obstacle", current_direction="S")
 
     wait_started = time.time()
@@ -317,12 +319,14 @@ def _pause_for_obstacle(direction: str) -> bool:
         time.sleep(OBSTACLE_POLL_SECONDS)
 
     _control_client.move(direction)
+    set_autonomous_motion(True, direction)
     _set_autonomous_state(paused_reason=None, current_direction=direction)
     return True
 
 
 def _drive_for(direction: str, seconds: float) -> bool:
     _control_client.move(direction)
+    set_autonomous_motion(True, direction)
     _set_autonomous_state(current_direction=direction)
     started = time.time()
     while time.time() - started < seconds:
@@ -363,16 +367,19 @@ def _attempt_obstacle_bypass(direction: str) -> bool:
         snapshot = get_sensor_snapshot()
         if not snapshot.get("obstacle"):
             _control_client.move(direction)
+            set_autonomous_motion(True, direction)
             _set_autonomous_state(paused_reason=None, current_direction=direction)
             return True
 
     _control_client.stop()
+    set_autonomous_motion(True, "S")
     _set_autonomous_state(paused_reason="obstacle", current_direction="S")
 
     while True:
         snapshot = get_sensor_snapshot()
         if not snapshot.get("obstacle"):
             _control_client.move(direction)
+            set_autonomous_motion(True, direction)
             _set_autonomous_state(paused_reason=None, current_direction=direction)
             return True
         with _state_lock:
@@ -383,9 +390,11 @@ def _attempt_obstacle_bypass(direction: str) -> bool:
 
 def _take_servo_break() -> bool:
     _control_client.stop()
+    set_autonomous_motion(True, "S")
     _set_autonomous_state(paused_reason="servo_break", current_direction="S")
     try:
         _control_client.servo_down()
+        trigger_arm(SERVO_BREAK_SECONDS)
     except Exception:
         pass
 
@@ -411,6 +420,8 @@ def _run_autonomous_profile(profile_doc: dict[str, Any]):
     try:
         _control_client.set_speed(AUTONOMOUS_SPEED)
         _control_client.stop()
+        clear_arm()
+        set_autonomous_motion(True, "S")
         _start_detection_sessions(user_id)
 
         progress_ms = 0
@@ -425,6 +436,7 @@ def _run_autonomous_profile(profile_doc: dict[str, Any]):
             direction = segment["direction"]
             remaining_ms = int(segment["duration_ms"])
             _control_client.move(direction)
+            set_autonomous_motion(True, direction)
             _set_autonomous_state(current_direction=direction)
 
             while remaining_ms > 0:
@@ -441,6 +453,7 @@ def _run_autonomous_profile(profile_doc: dict[str, Any]):
                     if not _take_servo_break():
                         break
                     _control_client.move(direction)
+                    set_autonomous_motion(True, direction)
                     _set_autonomous_state(current_direction=direction)
                     next_break_index += 1
 
@@ -456,6 +469,7 @@ def _run_autonomous_profile(profile_doc: dict[str, Any]):
                     break
 
         _control_client.stop()
+        clear_arm()
         completed_at = _now()
         with _state_lock:
             was_running = _autonomous_state["running"]
@@ -464,8 +478,11 @@ def _run_autonomous_profile(profile_doc: dict[str, Any]):
             _autonomous_state["completed_at"] = completed_at
             _autonomous_state["current_direction"] = "S"
             _autonomous_state["current_segment_index"] = len(segments) - 1 if segments else -1
+        set_autonomous_motion(False, "S")
     except Exception as exc:
         _control_client.stop()
+        clear_arm()
+        set_autonomous_motion(False, "S")
         with _state_lock:
             _autonomous_state["running"] = False
             _autonomous_state["completed"] = False
@@ -527,6 +544,8 @@ def stop_autonomous() -> dict[str, Any]:
         _autonomous_state["completed_at"] = _now()
 
     _control_client.stop()
+    clear_arm()
+    set_autonomous_motion(False, "S")
     _stop_detection_sessions()
     return get_autonomous_status()
 
