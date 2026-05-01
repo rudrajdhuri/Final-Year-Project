@@ -292,7 +292,7 @@ function DetectionTab({
             <p className="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400 sm:text-base">
               Upload a photo, capture one frame from the Pi camera, or start the shared live
               detection stream. The frontend can show the full live feed while the model checks every
-              3rd frame in the backend.
+              5th frame in the backend.
             </p>
           </div>
 
@@ -508,7 +508,7 @@ export default function DetectionPage() {
               </span>
             </div>
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Inference checks every {activeStatus?.frame_skip || 3}rd frame while the live stream stays continuous.
+              Inference checks every {activeStatus?.frame_skip || 5}th frame while the live stream stays continuous.
             </p>
           </div>
         </div>

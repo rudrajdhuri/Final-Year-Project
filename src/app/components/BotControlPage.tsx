@@ -21,7 +21,7 @@ import { apiFetch, getApiUrl } from "@/lib/api";
 
 const ESP32_HOST = "192.168.4.1";
 const ESP32_WS_URL = `ws://${ESP32_HOST}/CarInput`;
-const AUTONOMOUS_PWM = 205;
+const AUTONOMOUS_PWM = 150;
 
 const COMMANDS = {
   F: "MoveCar,1",
@@ -632,7 +632,7 @@ function ControlSurface({
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Motor Speed</h3>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 sm:text-base">
               Manual driving can still use the speed slider. Training and autonomous replay remain
-              fixed at PWM 205.
+              fixed at PWM 150.
             </p>
 
             <div className="mt-5">
@@ -792,7 +792,7 @@ function TrainingPage({
       const payload = await response.json();
       if (!response.ok || !payload.success) throw new Error(payload.error || "Could not start training");
       setTrainingStatus(payload.status);
-      onToast("Training started. Drive the full farm path at PWM 205.", "success");
+      onToast("Training started. Drive the full farm path at PWM 150.", "success");
     } catch (error) {
       onToast(error instanceof Error ? error.message : "Could not start training.", "error");
     } finally {
@@ -845,7 +845,7 @@ function TrainingPage({
             </p>
             <p className="mt-2 text-sm leading-6 text-amber-900 dark:text-amber-100/90 sm:text-base">
               This page records the path for autonomous replay. The training replay speed stays fixed
-              to PWM 205 so the saved profile matches autonomous playback as closely as possible.
+              to PWM 150 so the saved profile matches autonomous playback as closely as possible.
             </p>
           </div>
         </div>
@@ -1072,7 +1072,7 @@ function AutonomousPage({
                   Autonomous Replay
                 </h2>
                 <p className="text-sm text-gray-500 dark:text-gray-400 sm:text-base">
-                  Fixed speed PWM 205, two servo sensing breaks, one shared Pi camera stream, and both models running together.
+                  Fixed speed PWM 150, two servo sensing breaks, one shared Pi camera stream, and both models running together.
                 </p>
               </div>
             </div>
