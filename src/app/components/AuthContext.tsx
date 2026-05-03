@@ -29,6 +29,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [hydrated,  setHydrated]  = useState(false);
 
   useEffect(() => {
+    try {
+      const navEntries = performance.getEntriesByType("navigation") as PerformanceNavigationTiming[];
+      const navType = navEntries[0]?.type;
+      const storedUser = localStorage.getItem("agribot_user");
+
+      if (!storedUser && navType === "navigate") {
+        clearGuestSessionData();
+      }
+    } catch {}
+
     // Restore from localStorage
     try {
       const stored = localStorage.getItem("agribot_user");
@@ -46,8 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     setUser(null);
     localStorage.removeItem("agribot_user");
-    clearGuestHistory();
-    sessionStorage.clear();
+    clearGuestSessionData();
     window.location.href = "/";
   };
 
@@ -82,6 +91,11 @@ export function pushGuestHistory(record: any) {
 
 export function clearGuestHistory() {
   sessionStorage.removeItem("agribot_guest_history");
+}
+
+export function clearGuestSessionData() {
+  clearGuestHistory();
+  sessionStorage.removeItem("agribot_guest_soil_page_history");
 }
 
 // ── SHA-256 ──
