@@ -4,8 +4,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Activity, Droplets, FlaskConical, Thermometer, Waves } from "lucide-react";
 
 import Graph from "../components/graph";
-import { getGuestHistory, pushGuestHistory, useAuth } from "../components/AuthContext";
+import { pushGuestHistory, useAuth } from "../components/AuthContext";
 import { apiFetch } from "@/lib/api";
+
+const GUEST_SOIL_PAGE_KEY = "agribot_guest_soil_page_history";
 
 type SoilHistoryRow = {
   id: string;
@@ -49,11 +51,38 @@ function formatIst(value?: string | null, withDate = false) {
   });
 }
 
+function readGuestPageHistory(): SoilHistoryRow[] {
+  try {
+    const stored = sessionStorage.getItem(GUEST_SOIL_PAGE_KEY);
+    const parsed = stored ? JSON.parse(stored) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeGuestPageHistory(rows: SoilHistoryRow[]) {
+  try {
+    sessionStorage.setItem(GUEST_SOIL_PAGE_KEY, JSON.stringify(rows));
+  } catch {
+    // ignore storage failures for guest-only convenience state
+  }
+}
+
 export default function SoilSensorPage() {
   const { user, isGuest } = useAuth();
   const [data, setData] = useState<SoilPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [guestPageHistory, setGuestPageHistory] = useState<SoilHistoryRow[]>([]);
   const lastGuestTimestampRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!isGuest) {
+      setGuestPageHistory([]);
+      return;
+    }
+    setGuestPageHistory(readGuestPageHistory());
+  }, [isGuest]);
 
   useEffect(() => {
     let active = true;
@@ -97,70 +126,93 @@ export default function SoilSensorPage() {
       obstacle: data.obstacle,
       timestamp: new Date(data.timestamp).getTime(),
     });
-  }, [data?.timestamp, data?.arm_active, data?.moisture, data?.temperature, data?.humidity, data?.ph, data?.obstacle, isGuest]);
+
+    const nextRow: SoilHistoryRow = {
+      id: `guest-soil-${data.timestamp}`,
+      moisture: data.moisture,
+      temperature: data.temperature,
+      humidity: data.humidity,
+      ph: data.ph,
+      obstacle: data.obstacle,
+      timestamp: data.timestamp,
+    };
+
+    setGuestPageHistory((current) => {
+      const next = [...current, nextRow].slice(-10);
+      writeGuestPageHistory(next);
+      return next;
+    });
+  }, [
+    data?.timestamp,
+    data?.arm_active,
+    data?.moisture,
+    data?.temperature,
+    data?.humidity,
+    data?.ph,
+    data?.obstacle,
+    isGuest,
+  ]);
+
+  const latestGuestPageReading = guestPageHistory.length
+    ? guestPageHistory[guestPageHistory.length - 1]
+    : null;
 
   const metrics = useMemo(
     () => [
       {
         icon: Droplets,
         label: "Moisture",
-        value: formatValue(data?.moisture, "%"),
+        value: formatValue(isGuest ? latestGuestPageReading?.moisture : data?.moisture, "%"),
         tone: "text-blue-600 dark:text-blue-400",
         bg: "bg-blue-50 dark:bg-blue-500/10",
       },
       {
         icon: Thermometer,
         label: "Temperature",
-        value: formatValue(data?.temperature, "°C"),
+        value: formatValue(
+          isGuest ? latestGuestPageReading?.temperature : data?.temperature,
+          "°C"
+        ),
         tone: "text-orange-600 dark:text-orange-400",
         bg: "bg-orange-50 dark:bg-orange-500/10",
       },
       {
         icon: Waves,
         label: "Humidity",
-        value: formatValue(data?.humidity, "%"),
+        value: formatValue(isGuest ? latestGuestPageReading?.humidity : data?.humidity, "%"),
         tone: "text-emerald-600 dark:text-emerald-400",
         bg: "bg-emerald-50 dark:bg-emerald-500/10",
       },
       {
         icon: FlaskConical,
         label: "pH",
-        value: formatValue(data?.ph),
+        value: formatValue(isGuest ? latestGuestPageReading?.ph : data?.ph),
         tone: "text-violet-600 dark:text-violet-400",
         bg: "bg-violet-50 dark:bg-violet-500/10",
       },
     ],
-    [data]
+    [data, isGuest, latestGuestPageReading]
   );
 
-  const chartData = useMemo(
-    () => {
-      if (isGuest) {
-        return getGuestHistory()
-          .filter((item: any) => ["moisture", "temperature", "humidity"].includes(item.mode))
-          .slice(-10)
-          .map((row: any) => ({
-            time:
-              typeof row.timestamp === "number"
-                ? formatIst(new Date(row.timestamp).toISOString())
-                : formatIst(row.timestamp),
-            moisture: row.moisture,
-            temperature: row.temperature,
-            humidity: row.humidity,
-            ph: row.ph,
-          }));
-      }
-
-      return (data?.history || []).map((row) => ({
+  const chartData = useMemo(() => {
+    if (isGuest) {
+      return guestPageHistory.map((row) => ({
         time: formatIst(row.timestamp),
         moisture: row.moisture,
         temperature: row.temperature,
         humidity: row.humidity,
         ph: row.ph,
       }));
-    },
-    [data, isGuest]
-  );
+    }
+
+    return (data?.history || []).map((row) => ({
+      time: formatIst(row.timestamp),
+      moisture: row.moisture,
+      temperature: row.temperature,
+      humidity: row.humidity,
+      ph: row.ph,
+    }));
+  }, [data, guestPageHistory, isGuest]);
 
   return (
     <div className="min-h-full bg-gray-50 px-4 py-5 transition-colors duration-200 dark:bg-gray-950 sm:px-6 lg:px-8">
@@ -180,15 +232,21 @@ export default function SoilSensorPage() {
             <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
               <Activity className="h-4 w-4" />
               <span className="text-sm font-semibold">
-                {data?.arm_active
-                  ? "Sensor arm is down"
-                  : data?.connected
-                    ? "Waiting for arm-down reading"
-                    : "Waiting for ESP32 stream"}
+                {isGuest
+                  ? latestGuestPageReading
+                    ? "Guest page reading available"
+                    : data?.connected
+                      ? "Waiting for first page reading"
+                      : "Waiting for ESP32 stream"
+                  : data?.arm_active
+                    ? "Sensor arm is down"
+                    : data?.connected
+                      ? "Waiting for arm-down reading"
+                      : "Waiting for ESP32 stream"}
               </span>
             </div>
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {formatIst(data?.timestamp, true)}
+              {formatIst(isGuest ? latestGuestPageReading?.timestamp : data?.timestamp, true)}
             </p>
           </div>
         </div>
