@@ -1,7 +1,6 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, Response
 
 from services.live_detection_service import (
-    frame_snapshot_response,
     frame_stream_response,
     get_all_detection_status,
     get_detection_status,
@@ -68,5 +67,16 @@ def live_stream():
 
 
 @auto_detection_bp.route("/snapshot", methods=["GET"])
-def live_snapshot():
-    return frame_snapshot_response()
+def snapshot():
+    """Returns the latest single JPEG frame from the live detection worker.
+    Frontend polls this every 2 seconds instead of consuming the MJPEG stream.
+    """
+    from services.live_detection_service import _latest_frame, _lock
+
+    with _lock:
+        frame = _latest_frame
+
+    if frame is None:
+        return jsonify({"error": "No frame available yet"}), 404
+
+    return Response(frame, mimetype="image/jpeg")

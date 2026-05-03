@@ -17,7 +17,7 @@ import {
   WifiOff,
 } from "lucide-react";
 
-import { apiFetch, getApiUrl } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import { useAuth } from "./AuthContext";
 
 const ESP32_HOST = "192.168.4.1";
@@ -960,9 +960,10 @@ function AutonomousPage({
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState("");
   const [status, setStatus] = useState<AutonomousStatus | null>(null);
-  const [snapshotBaseUrl, setSnapshotBaseUrl] = useState<string | null>(null);
-  const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null);
+  const [snapshotPhoto, setSnapshotPhoto] = useState<string | null>(null);
   const [snapshotLoading, setSnapshotLoading] = useState(false);
+  const cycleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(true);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
 
@@ -994,7 +995,6 @@ function AutonomousPage({
   useEffect(() => {
     void refreshProfiles();
     void refreshStatus();
-    getApiUrl("/api/auto/snapshot").then(setSnapshotBaseUrl);
 
     const timer = window.setInterval(() => {
       void refreshStatus();
@@ -1049,75 +1049,61 @@ function AutonomousPage({
   const selectedProfile = profiles.find((item) => item.id === selectedProfileId) || null;
   const running = Boolean(status?.running);
   const progressPercent = Math.round((status?.progress_ratio ?? 0) * 100);
-  const snapshotWanted = Boolean(running && status?.profile_id && snapshotBaseUrl);
 
   useEffect(() => {
-    let active = true;
-    let timer: number | null = null;
-
-    const clearSnapshot = () => {
-      setSnapshotUrl((previous) => {
-        if (previous) URL.revokeObjectURL(previous);
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (cycleTimerRef.current) clearTimeout(cycleTimerRef.current);
+      setSnapshotPhoto((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
         return null;
       });
     };
+  }, []);
 
-    const schedule = (callback: () => void, delay: number) => {
-      timer = window.setTimeout(callback, delay);
-    };
+  useEffect(() => {
+    if (cycleTimerRef.current) clearTimeout(cycleTimerRef.current);
 
-    const cycle = async () => {
-      if (!active || !snapshotWanted || !snapshotBaseUrl) return;
-      clearSnapshot();
+    if (!running) {
+      setSnapshotPhoto((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      setSnapshotLoading(false);
+      return;
+    }
+
+    const fetchPhoto = async () => {
+      if (!mountedRef.current || !running) return;
       setSnapshotLoading(true);
-
       try {
-        const response = await apiFetch(`${snapshotBaseUrl}?t=${Date.now()}`, { cache: "no-store" });
-        if (!active) return;
-
-        if (response.ok) {
-          const blob = await response.blob();
-          if (!active) return;
-          const nextUrl = URL.createObjectURL(blob);
-          setSnapshotUrl((previous) => {
-            if (previous) URL.revokeObjectURL(previous);
-            return nextUrl;
+        const res = await apiFetch(`/api/auto/snapshot?t=${Date.now()}`, { cache: "no-store" });
+        if (!mountedRef.current) return;
+        if (res.ok) {
+          const blob = await res.blob();
+          if (!mountedRef.current) return;
+          const url = URL.createObjectURL(blob);
+          setSnapshotPhoto((prev) => {
+            if (prev) URL.revokeObjectURL(prev);
+            return url;
           });
           setSnapshotLoading(false);
-
-          schedule(() => {
-            if (!active) return;
-            clearSnapshot();
+          cycleTimerRef.current = setTimeout(() => {
+            if (!mountedRef.current) return;
             setSnapshotLoading(true);
-            schedule(() => {
-              void cycle();
-            }, 1500);
+            cycleTimerRef.current = setTimeout(() => void fetchPhoto(), 1500);
           }, 500);
           return;
         }
       } catch {
-        if (!active) return;
+        if (!mountedRef.current) return;
       }
-
-      setSnapshotLoading(true);
-      schedule(() => {
-        void cycle();
-      }, 2000);
+      cycleTimerRef.current = setTimeout(() => void fetchPhoto(), 2000);
     };
 
-    if (snapshotWanted) {
-      void cycle();
-    } else {
-      clearSnapshot();
-      setSnapshotLoading(false);
-    }
-
-    return () => {
-      active = false;
-      if (timer) window.clearTimeout(timer);
-      clearSnapshot();
-    };
-  }, [snapshotBaseUrl, snapshotWanted]);
+    void fetchPhoto();
+  }, [running]);
 
   return (
     <div className="space-y-5">
@@ -1229,16 +1215,20 @@ function AutonomousPage({
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Live Autonomous View</h3>
             </div>
             <div className="overflow-hidden rounded-3xl border border-gray-200 bg-gray-950 dark:border-gray-800">
-              {snapshotUrl ? (
-                <img src={snapshotUrl} alt="Latest autonomous Pi camera snapshot" className="aspect-[16/9] max-h-[23rem] w-full object-cover" />
+              {snapshotPhoto ? (
+                <img
+                  src={snapshotPhoto}
+                  alt="Latest autonomous Pi camera snapshot"
+                  className="aspect-[16/9] max-h-[23rem] w-full object-cover"
+                />
               ) : snapshotLoading ? (
                 <div className="flex aspect-[16/9] max-h-[23rem] flex-col items-center justify-center bg-gray-200 text-gray-600 dark:bg-gray-800 dark:text-gray-300">
                   <Loader2 className="mb-3 h-10 w-10 animate-spin" />
-                  <span className="text-sm font-medium">Loading latest autonomous snapshot...</span>
+                  <span className="text-sm font-medium">Loading autonomous snapshot...</span>
                 </div>
               ) : running ? (
                 <div className="flex aspect-[16/9] max-h-[23rem] items-center justify-center text-sm text-gray-400">
-                  Waiting for the autonomous camera snapshot...
+                  Waiting for the first autonomous snapshot...
                 </div>
               ) : (
                 <div className="flex aspect-[16/9] max-h-[23rem] items-center justify-center text-sm text-gray-400">
