@@ -11,7 +11,7 @@ def get_collection(name: str):
     return mongo.db[name]
 
 
-def limit_collection(collection_name: str, max_records: int = 15):
+def limit_collection(collection_name: str, max_records: int = 50):
     collection = get_collection(collection_name)
     count = collection.count_documents({})
     if count <= max_records:

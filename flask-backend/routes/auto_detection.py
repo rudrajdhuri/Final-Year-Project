@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request
 
 from services.live_detection_service import (
+    frame_snapshot_response,
     frame_stream_response,
     get_all_detection_status,
     get_detection_status,
@@ -64,3 +65,8 @@ def get_all_status():
 @auto_detection_bp.route("/stream", methods=["GET"])
 def live_stream():
     return frame_stream_response()
+
+
+@auto_detection_bp.route("/snapshot", methods=["GET"])
+def live_snapshot():
+    return frame_snapshot_response()

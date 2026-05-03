@@ -84,7 +84,8 @@ def training_status_route():
 
 @bots_bp.route("/bots/profiles", methods=["GET"])
 def profiles_route():
-    return jsonify({"success": True, "profiles": get_profiles()}), 200
+    user_id = request.args.get("user_id", "guest")
+    return jsonify({"success": True, "profiles": get_profiles(user_id)}), 200
 
 
 @bots_bp.route("/bots/autonomous/start", methods=["POST"])

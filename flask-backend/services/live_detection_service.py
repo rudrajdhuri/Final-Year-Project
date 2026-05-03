@@ -542,3 +542,15 @@ def frame_stream_response():
                 time.sleep(0.1)
 
     return Response(generator(), mimetype="multipart/x-mixed-replace; boundary=frame")
+
+
+def frame_snapshot_response():
+    with _lock:
+        frame = _latest_frame
+        active = _shared_active()
+
+    if frame is None:
+        status = 204 if active else 404
+        return Response(status=status)
+
+    return Response(frame, mimetype="image/jpeg")

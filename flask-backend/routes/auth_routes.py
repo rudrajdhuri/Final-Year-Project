@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 import bcrypt
 import hashlib
 import dns.resolver
-from datetime import datetime
+from datetime import datetime, timezone
 from database import get_collection, limit_collection
 
 auth_bp = Blueprint('auth', __name__)
@@ -28,14 +28,6 @@ def _email_domain_valid(email: str) -> bool:
 # ──────────────────────────────────────────
 # Helper: enforce per-user limit
 # ──────────────────────────────────────────
-def _enforce_user_limit(col, user_id: str, limit: int = 25):
-    count = col.count_documents({"user_id": user_id})
-    if count >= limit:
-        oldest = col.find_one({"user_id": user_id}, sort=[("timestamp", 1)])
-        if oldest:
-            col.delete_one({"_id": oldest["_id"]})
-
-
 # ──────────────────────────────────────────
 # POST /api/auth/signup  (manual)
 # ──────────────────────────────────────────
@@ -71,7 +63,7 @@ def signup():
             "email":         email,
             "password":      hashed,
             "auth_provider": "manual",
-            "created_at":    datetime.utcnow()
+            "created_at":    datetime.now(timezone.utc)
         })
 
         user_id = str(result.inserted_id)
@@ -182,7 +174,7 @@ def google_auth():
             "auth_provider": "google",
             "google_id":     google_id,
             "picture":       picture,
-            "created_at":    datetime.utcnow()
+            "created_at":    datetime.now(timezone.utc)
         })
 
         user_id = str(result.inserted_id)
@@ -231,7 +223,7 @@ def _migrate_guest_history(user_id: str, guest_records: list):
 
     for rec in guest_records:
         mode = rec.get('mode')
-        ts   = datetime.utcfromtimestamp(rec['timestamp'] / 1000) if rec.get('timestamp') else datetime.utcnow()
+        ts   = datetime.fromtimestamp(rec['timestamp'] / 1000, tz=timezone.utc) if rec.get('timestamp') else datetime.now(timezone.utc)
 
         if mode == 'animal':
             animal_col.insert_one({
@@ -243,7 +235,7 @@ def _migrate_guest_history(user_id: str, guest_records: list):
                 "image_b64":       rec.get('image_b64', ''),
                 "timestamp":       ts
             })
-            limit_collection("animaldect_data")
+            limit_collection("animaldect_data", 50)
         elif mode == 'plant':
             plant_col.insert_one({
                 "user_id":    user_id,
@@ -252,4 +244,19 @@ def _migrate_guest_history(user_id: str, guest_records: list):
                 "image_b64":  rec.get('image_b64', ''),
                 "timestamp":  ts
             })
-            limit_collection("plantdect_data")
+            limit_collection("plantdect_data", 50)
+        elif mode in {'moisture', 'temperature', 'humidity'}:
+            sensor_col = get_collection("sensor_data")
+            if sensor_col.find_one({"user_id": user_id, "timestamp": ts}):
+                continue
+            sensor_col.insert_one({
+                "user_id": user_id,
+                "moisture": rec.get('moisture'),
+                "temperature": rec.get('temperature'),
+                "humidity": rec.get('humidity'),
+                "ph": rec.get('ph'),
+                "obstacle": bool(rec.get('obstacle', False)),
+                "source": "guest-migrated",
+                "timestamp": ts
+            })
+            limit_collection("sensor_data", 50)

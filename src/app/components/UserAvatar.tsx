@@ -95,7 +95,6 @@ export default function UserAvatar() {
                     } catch {}
                     logout();
                     clearGuestHistory();
-                    sessionStorage.clear();
                     setOpen(false);
                     window.location.href = "/";
                   }}

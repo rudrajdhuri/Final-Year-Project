@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Activity, Droplets, FlaskConical, Thermometer, Waves } from "lucide-react";
 
 import Graph from "../components/graph";
+import { getGuestHistory, pushGuestHistory, useAuth } from "../components/AuthContext";
 import { apiFetch } from "@/lib/api";
 
 type SoilHistoryRow = {
@@ -49,15 +50,19 @@ function formatIst(value?: string | null, withDate = false) {
 }
 
 export default function SoilSensorPage() {
+  const { user, isGuest } = useAuth();
   const [data, setData] = useState<SoilPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const lastGuestTimestampRef = useRef<string | null>(null);
 
   useEffect(() => {
     let active = true;
 
     const load = async () => {
       try {
-        const response = await apiFetch("/api/soil/readings");
+        const response = await apiFetch(
+          `/api/soil/readings${user?.id ? `?user_id=${encodeURIComponent(user.id)}` : ""}`
+        );
         if (!response.ok) throw new Error("Soil readings could not be loaded");
 
         const payload = await response.json();
@@ -76,7 +81,23 @@ export default function SoilSensorPage() {
       active = false;
       window.clearInterval(timer);
     };
-  }, []);
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!isGuest || !data?.timestamp || !data?.arm_active) return;
+    if (lastGuestTimestampRef.current === data.timestamp) return;
+    lastGuestTimestampRef.current = data.timestamp;
+
+    pushGuestHistory({
+      mode: "humidity",
+      moisture: data.moisture,
+      temperature: data.temperature,
+      humidity: data.humidity,
+      ph: data.ph,
+      obstacle: data.obstacle,
+      timestamp: new Date(data.timestamp).getTime(),
+    });
+  }, [data?.timestamp, data?.arm_active, data?.moisture, data?.temperature, data?.humidity, data?.ph, data?.obstacle, isGuest]);
 
   const metrics = useMemo(
     () => [
@@ -113,15 +134,32 @@ export default function SoilSensorPage() {
   );
 
   const chartData = useMemo(
-    () =>
-      (data?.history || []).map((row) => ({
+    () => {
+      if (isGuest) {
+        return getGuestHistory()
+          .filter((item: any) => ["moisture", "temperature", "humidity"].includes(item.mode))
+          .slice(-10)
+          .map((row: any) => ({
+            time:
+              typeof row.timestamp === "number"
+                ? formatIst(new Date(row.timestamp).toISOString())
+                : formatIst(row.timestamp),
+            moisture: row.moisture,
+            temperature: row.temperature,
+            humidity: row.humidity,
+            ph: row.ph,
+          }));
+      }
+
+      return (data?.history || []).map((row) => ({
         time: formatIst(row.timestamp),
         moisture: row.moisture,
         temperature: row.temperature,
         humidity: row.humidity,
         ph: row.ph,
-      })),
-    [data]
+      }));
+    },
+    [data, isGuest]
   );
 
   return (

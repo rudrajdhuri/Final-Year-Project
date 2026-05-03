@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   Camera,
@@ -143,13 +143,15 @@ function ResultCard({ result, mode }: { result: any; mode: Mode }) {
 function DetectionTab({
   mode,
   statuses,
-  streamUrl,
+  snapshotUrl,
+  snapshotLoading,
   autonomousRunning,
   autonomousProfileName,
 }: {
   mode: Mode;
   statuses: AllStatuses | null;
-  streamUrl: string | null;
+  snapshotUrl: string | null;
+  snapshotLoading: boolean;
   autonomousRunning: boolean;
   autonomousProfileName: string | null;
 }) {
@@ -291,8 +293,8 @@ function DetectionTab({
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white sm:text-2xl">{title}</h2>
             <p className="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400 sm:text-base">
               Upload a photo, capture one frame from the Pi camera, or start the shared live
-              detection stream. The frontend can show the full live feed while the model checks every
-              5th frame in the backend.
+              detection stream. The backend still checks every 5th frame, while the frontend shows a
+              still snapshot every 2 seconds to keep the Pi lighter.
             </p>
           </div>
 
@@ -337,10 +339,19 @@ function DetectionTab({
               : "border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-950/40"
           }`}
         >
-          {showAutonomousOnly && statuses?.stream_active && streamUrl ? (
-            <img src={streamUrl} alt="Shared autonomous live stream" className="aspect-video w-full object-cover" />
-          ) : liveSessionRunning && statuses?.stream_active && streamUrl ? (
-            <img src={streamUrl} alt="Manual live detection stream" className="aspect-video w-full object-cover" />
+          {((showAutonomousOnly || liveSessionRunning) && snapshotUrl) ? (
+            <img
+              src={snapshotUrl}
+              alt={showAutonomousOnly ? "Shared autonomous latest snapshot" : "Manual detection latest snapshot"}
+              className="aspect-video w-full object-cover"
+            />
+          ) : ((showAutonomousOnly || liveSessionRunning) && snapshotLoading) ? (
+            <div className="flex aspect-video flex-col items-center justify-center bg-gray-200 text-center dark:bg-gray-800">
+              <Loader2 className="mb-4 h-10 w-10 animate-spin text-gray-500 dark:text-gray-300" />
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-300 sm:text-base">
+                Loading latest camera snapshot...
+              </p>
+            </div>
           ) : bigBoxImage ? (
             <img src={bigBoxImage} alt="Selected detection preview" className="aspect-video w-full object-contain bg-black/90" />
           ) : (
@@ -438,13 +449,15 @@ function DetectionTab({
 export default function DetectionPage() {
   const [tab, setTab] = useState<Mode>("animal");
   const [statuses, setStatuses] = useState<AllStatuses | null>(null);
-  const [streamUrl, setStreamUrl] = useState<string | null>(null);
+  const [snapshotBaseUrl, setSnapshotBaseUrl] = useState<string | null>(null);
+  const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null);
+  const [snapshotLoading, setSnapshotLoading] = useState(false);
   const [autonomous, setAutonomous] = useState<AutonomousEnvelope["status"] | null>(null);
 
   useEffect(() => {
     let active = true;
-    getApiUrl("/api/auto/stream").then((url) => {
-      if (active) setStreamUrl(url);
+    getApiUrl("/api/auto/snapshot").then((url) => {
+      if (active) setSnapshotBaseUrl(url);
     });
     return () => {
       active = false;
@@ -481,6 +494,75 @@ export default function DetectionPage() {
   }, []);
 
   const activeStatus = statuses?.[tab];
+  const snapshotWanted = Boolean(snapshotBaseUrl && statuses?.stream_active && (Boolean(autonomous?.running) || Boolean(activeStatus?.running)));
+
+  useEffect(() => {
+    let active = true;
+    let timer: number | null = null;
+
+    const clearSnapshot = () => {
+      setSnapshotUrl((previous) => {
+        if (previous) URL.revokeObjectURL(previous);
+        return null;
+      });
+    };
+
+    const schedule = (callback: () => void, delay: number) => {
+      timer = window.setTimeout(callback, delay);
+    };
+
+    const cycle = async () => {
+      if (!active || !snapshotWanted || !snapshotBaseUrl) return;
+      clearSnapshot();
+      setSnapshotLoading(true);
+
+      try {
+        const response = await apiFetch(`${snapshotBaseUrl}?t=${Date.now()}`, { cache: "no-store" });
+        if (!active) return;
+
+        if (response.ok) {
+          const blob = await response.blob();
+          if (!active) return;
+          const nextUrl = URL.createObjectURL(blob);
+          setSnapshotUrl((previous) => {
+            if (previous) URL.revokeObjectURL(previous);
+            return nextUrl;
+          });
+          setSnapshotLoading(false);
+
+          schedule(() => {
+            if (!active) return;
+            clearSnapshot();
+            setSnapshotLoading(true);
+            schedule(() => {
+              void cycle();
+            }, 1500);
+          }, 500);
+          return;
+        }
+      } catch {
+        if (!active) return;
+      }
+
+      setSnapshotLoading(true);
+      schedule(() => {
+        void cycle();
+      }, 2000);
+    };
+
+    if (snapshotWanted) {
+      void cycle();
+    } else {
+      clearSnapshot();
+      setSnapshotLoading(false);
+    }
+
+    return () => {
+      active = false;
+      if (timer) window.clearTimeout(timer);
+      clearSnapshot();
+    };
+  }, [snapshotBaseUrl, snapshotWanted]);
 
   return (
     <div className="min-h-screen bg-gray-50 px-4 py-5 transition-colors duration-200 dark:bg-gray-950 sm:px-6 lg:px-8">
@@ -508,7 +590,7 @@ export default function DetectionPage() {
               </span>
             </div>
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Inference checks every {activeStatus?.frame_skip || 5}th frame while the live stream stays continuous.
+              Inference checks every {activeStatus?.frame_skip || 5}th frame while the frontend shows one fresh snapshot about every 2 seconds.
             </p>
           </div>
         </div>
@@ -539,7 +621,8 @@ export default function DetectionPage() {
         <DetectionTab
           mode={tab}
           statuses={statuses}
-          streamUrl={streamUrl}
+          snapshotUrl={snapshotUrl}
+          snapshotLoading={snapshotLoading}
           autonomousRunning={Boolean(autonomous?.running)}
           autonomousProfileName={autonomous?.profile_name || null}
         />

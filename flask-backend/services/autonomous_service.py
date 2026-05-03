@@ -25,6 +25,7 @@ TURN_BYPASS_SECONDS = 0.75
 FORWARD_BYPASS_SECONDS = 1.25
 MIN_SEGMENT_MS = 250
 PROFILE_LIMIT = 10
+PROFILE_COLLECTION_LIMIT = 50
 
 COMMAND_TO_RAW = {
     "F": "MoveCar,1",
@@ -216,7 +217,8 @@ def stop_manual_recording(profile_name: str) -> dict[str, Any]:
 
     collection = get_collection(COLLECTIONS["PROFILES"])
     inserted = collection.insert_one(profile_doc)
-    limit_collection(COLLECTIONS["PROFILES"], PROFILE_LIMIT)
+    limit_collection(COLLECTIONS["PROFILES"], PROFILE_COLLECTION_LIMIT)
+    _limit_profiles_for_user(user_id, PROFILE_LIMIT)
 
     return {"success": True, "profile_id": str(inserted.inserted_id), "profile": _serialize_profile({**profile_doc, "_id": inserted.inserted_id})}
 
@@ -279,8 +281,26 @@ def _serialize_profile(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def get_profiles() -> list[dict[str, Any]]:
-    rows = list(get_collection(COLLECTIONS["PROFILES"]).find().sort("created_at", -1).limit(PROFILE_LIMIT))
+def _limit_profiles_for_user(user_id: str, max_profiles: int = PROFILE_LIMIT):
+    collection = get_collection(COLLECTIONS["PROFILES"])
+    count = collection.count_documents({"user_id": user_id})
+    if count <= max_profiles:
+        return
+
+    oldest = collection.find({"user_id": user_id}).sort("created_at", 1).limit(count - max_profiles)
+    oldest_ids = [doc["_id"] for doc in oldest]
+    if oldest_ids:
+        collection.delete_many({"_id": {"$in": oldest_ids}})
+
+
+def get_profiles(user_id: str | None = None) -> list[dict[str, Any]]:
+    owner_id = user_id or "guest"
+    rows = list(
+        get_collection(COLLECTIONS["PROFILES"])
+        .find({"user_id": owner_id})
+        .sort("created_at", -1)
+        .limit(PROFILE_LIMIT)
+    )
     return [_serialize_profile(row) for row in rows]
 
 
@@ -500,7 +520,8 @@ def start_autonomous(profile_id: str, user_id: str = "guest") -> dict[str, Any]:
     except Exception as exc:
         raise RuntimeError("Selected training profile id is invalid") from exc
 
-    row = get_collection(COLLECTIONS["PROFILES"]).find_one({"_id": object_id}) if object_id else None
+    owner_id = user_id or "guest"
+    row = get_collection(COLLECTIONS["PROFILES"]).find_one({"_id": object_id, "user_id": owner_id}) if object_id else None
     if row is None:
         raise RuntimeError("Selected training profile was not found")
 
@@ -525,7 +546,7 @@ def start_autonomous(profile_id: str, user_id: str = "guest") -> dict[str, Any]:
                 "total_segments": len(row.get("segments", [])),
                 "progress_ms": 0,
                 "total_duration_ms": int(row.get("total_duration_ms", 0)),
-                "user_id": user_id,
+                "user_id": owner_id,
                 "error": None,
                 "breaks_taken": 0,
             }

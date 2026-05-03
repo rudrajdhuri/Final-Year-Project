@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 
 import { apiFetch, getApiUrl } from "@/lib/api";
+import { useAuth } from "./AuthContext";
 
 const ESP32_HOST = "192.168.4.1";
 const ESP32_WS_URL = `ws://${ESP32_HOST}/CarInput`;
@@ -734,6 +735,7 @@ function ManualPage({
 }
 
 function TrainingPage({
+  userId,
   connected,
   connecting,
   lastCommand,
@@ -743,6 +745,7 @@ function TrainingPage({
   sendRaw,
   onToast,
 }: {
+  userId: string;
   connected: boolean;
   connecting: boolean;
   lastCommand: CommandKey;
@@ -787,7 +790,7 @@ function TrainingPage({
       const response = await apiFetch("/api/bots/training/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: "guest" }),
+        body: JSON.stringify({ user_id: userId }),
       });
       const payload = await response.json();
       if (!response.ok || !payload.success) throw new Error(payload.error || "Could not start training");
@@ -798,7 +801,7 @@ function TrainingPage({
     } finally {
       setBusy(false);
     }
-  }, [connected, onToast, sendCommand]);
+  }, [connected, onToast, sendCommand, sendRaw, userId]);
 
   const saveTraining = useCallback(async () => {
     if (!profileName.trim()) {
@@ -946,22 +949,26 @@ function TrainingPage({
 }
 
 function AutonomousPage({
+  userId,
   onToast,
   openTrainingPage,
 }: {
+  userId: string;
   onToast: (message: string, type: ToastType) => void;
   openTrainingPage: () => void;
 }) {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState("");
   const [status, setStatus] = useState<AutonomousStatus | null>(null);
-  const [streamUrl, setStreamUrl] = useState<string | null>(null);
+  const [snapshotBaseUrl, setSnapshotBaseUrl] = useState<string | null>(null);
+  const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null);
+  const [snapshotLoading, setSnapshotLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
 
   const refreshProfiles = useCallback(async () => {
     try {
-      const response = await apiFetch("/api/bots/profiles", { cache: "no-store" });
+      const response = await apiFetch(`/api/bots/profiles?user_id=${encodeURIComponent(userId)}`, { cache: "no-store" });
       const payload = await response.json();
       if (!response.ok || !payload.success) return;
       setProfiles(payload.profiles || []);
@@ -969,7 +976,7 @@ function AutonomousPage({
     } catch {
       // ignore
     }
-  }, []);
+  }, [userId]);
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -987,7 +994,7 @@ function AutonomousPage({
   useEffect(() => {
     void refreshProfiles();
     void refreshStatus();
-    getApiUrl("/api/auto/stream").then(setStreamUrl);
+    getApiUrl("/api/auto/snapshot").then(setSnapshotBaseUrl);
 
     const timer = window.setInterval(() => {
       void refreshStatus();
@@ -1008,7 +1015,7 @@ function AutonomousPage({
       const response = await apiFetch("/api/bots/autonomous/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ profile_id: selectedProfileId, user_id: "guest" }),
+        body: JSON.stringify({ profile_id: selectedProfileId, user_id: userId }),
       });
       const payload = await response.json();
       if (!response.ok || !payload.success) throw new Error(payload.error || "Could not start autonomous mode");
@@ -1019,7 +1026,7 @@ function AutonomousPage({
     } finally {
       setWorking(false);
     }
-  }, [onToast, selectedProfileId]);
+  }, [onToast, selectedProfileId, userId]);
 
   const stopAutonomous = useCallback(async () => {
     setWorking(true);
@@ -1042,6 +1049,75 @@ function AutonomousPage({
   const selectedProfile = profiles.find((item) => item.id === selectedProfileId) || null;
   const running = Boolean(status?.running);
   const progressPercent = Math.round((status?.progress_ratio ?? 0) * 100);
+  const snapshotWanted = Boolean(running && status?.profile_id && snapshotBaseUrl);
+
+  useEffect(() => {
+    let active = true;
+    let timer: number | null = null;
+
+    const clearSnapshot = () => {
+      setSnapshotUrl((previous) => {
+        if (previous) URL.revokeObjectURL(previous);
+        return null;
+      });
+    };
+
+    const schedule = (callback: () => void, delay: number) => {
+      timer = window.setTimeout(callback, delay);
+    };
+
+    const cycle = async () => {
+      if (!active || !snapshotWanted || !snapshotBaseUrl) return;
+      clearSnapshot();
+      setSnapshotLoading(true);
+
+      try {
+        const response = await apiFetch(`${snapshotBaseUrl}?t=${Date.now()}`, { cache: "no-store" });
+        if (!active) return;
+
+        if (response.ok) {
+          const blob = await response.blob();
+          if (!active) return;
+          const nextUrl = URL.createObjectURL(blob);
+          setSnapshotUrl((previous) => {
+            if (previous) URL.revokeObjectURL(previous);
+            return nextUrl;
+          });
+          setSnapshotLoading(false);
+
+          schedule(() => {
+            if (!active) return;
+            clearSnapshot();
+            setSnapshotLoading(true);
+            schedule(() => {
+              void cycle();
+            }, 1500);
+          }, 500);
+          return;
+        }
+      } catch {
+        if (!active) return;
+      }
+
+      setSnapshotLoading(true);
+      schedule(() => {
+        void cycle();
+      }, 2000);
+    };
+
+    if (snapshotWanted) {
+      void cycle();
+    } else {
+      clearSnapshot();
+      setSnapshotLoading(false);
+    }
+
+    return () => {
+      active = false;
+      if (timer) window.clearTimeout(timer);
+      clearSnapshot();
+    };
+  }, [snapshotBaseUrl, snapshotWanted]);
 
   return (
     <div className="space-y-5">
@@ -1153,11 +1229,20 @@ function AutonomousPage({
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Live Autonomous View</h3>
             </div>
             <div className="overflow-hidden rounded-3xl border border-gray-200 bg-gray-950 dark:border-gray-800">
-              {streamUrl ? (
-                <img src={streamUrl} alt="Live Pi camera stream" className="aspect-[16/9] max-h-[23rem] w-full object-cover" />
+              {snapshotUrl ? (
+                <img src={snapshotUrl} alt="Latest autonomous Pi camera snapshot" className="aspect-[16/9] max-h-[23rem] w-full object-cover" />
+              ) : snapshotLoading ? (
+                <div className="flex aspect-[16/9] max-h-[23rem] flex-col items-center justify-center bg-gray-200 text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                  <Loader2 className="mb-3 h-10 w-10 animate-spin" />
+                  <span className="text-sm font-medium">Loading latest autonomous snapshot...</span>
+                </div>
+              ) : running ? (
+                <div className="flex aspect-[16/9] max-h-[23rem] items-center justify-center text-sm text-gray-400">
+                  Waiting for the autonomous camera snapshot...
+                </div>
               ) : (
                 <div className="flex aspect-[16/9] max-h-[23rem] items-center justify-center text-sm text-gray-400">
-                  Live stream preparing...
+                  Autonomous view appears only after a profile is selected and autonomous mode starts.
                 </div>
               )}
             </div>
@@ -1253,6 +1338,8 @@ function AutonomousPage({
 }
 
 export default function BotControlPage() {
+  const { user } = useAuth();
+  const userId = user?.id || "guest";
   const [tab, setTab] = useState<PageTab>("manual");
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
   const toastTimer = useRef<number | null>(null);
@@ -1321,6 +1408,7 @@ export default function BotControlPage() {
           />
         ) : tab === "training" ? (
           <TrainingPage
+            userId={userId}
             connected={controller.connected}
             connecting={controller.connecting}
             lastCommand={controller.lastCommand}
@@ -1331,7 +1419,7 @@ export default function BotControlPage() {
             onToast={showToast}
           />
         ) : (
-          <AutonomousPage onToast={showToast} openTrainingPage={() => setTab("training")} />
+          <AutonomousPage userId={userId} onToast={showToast} openTrainingPage={() => setTab("training")} />
         )}
       </div>
     </div>

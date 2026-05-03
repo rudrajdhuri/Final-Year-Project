@@ -209,9 +209,28 @@ export default function HistoryContent() {
           const guestHistory = getGuestHistory();
           if (!active) return;
           setDetectionRecords({
-            animal: guestHistory.filter((item: any) => item.mode === "animal").reverse(),
-            plant: guestHistory.filter((item: any) => item.mode === "plant").reverse(),
+            animal: guestHistory.filter((item: any) => item.mode === "animal").slice(-15).reverse(),
+            plant: guestHistory.filter((item: any) => item.mode === "plant").slice(-15).reverse(),
           });
+          setSensorRecords(
+            guestHistory
+              .filter((item: any) => ["moisture", "temperature", "humidity"].includes(item.mode))
+              .slice(-10)
+              .reverse()
+              .map((item: any, index: number) => ({
+                id: item.id || `guest-sensor-${item.timestamp || index}`,
+                moisture: item.moisture ?? null,
+                temperature: item.temperature ?? null,
+                humidity: item.humidity ?? null,
+                ph: item.ph ?? null,
+                obstacle: Boolean(item.obstacle),
+                timestamp: item.timestamp
+                  ? typeof item.timestamp === "number"
+                    ? new Date(item.timestamp).toISOString()
+                    : item.timestamp
+                  : null,
+              }))
+          );
         } else {
           const [animalRes, plantRes] = await Promise.all([
             apiFetch(`/api/animal/history?user_id=${user!.id}`),
@@ -223,12 +242,11 @@ export default function HistoryContent() {
             animal: animalJson.success ? animalJson.data : [],
             plant: plantJson.success ? plantJson.data : [],
           });
+          const soilRes = await apiFetch(`/api/soil/history?user_id=${user!.id}&limit=10`);
+          const soilJson = await soilRes.json();
+          if (!active) return;
+          setSensorRecords(soilJson.success ? soilJson.data : []);
         }
-
-        const soilRes = await apiFetch("/api/soil/history");
-        const soilJson = await soilRes.json();
-        if (!active) return;
-        setSensorRecords(soilJson.success ? soilJson.data : []);
       } catch {
         if (!active) return;
       } finally {

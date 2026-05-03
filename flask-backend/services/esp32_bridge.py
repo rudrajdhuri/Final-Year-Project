@@ -95,7 +95,7 @@ def _persist_sensor_reading(reading: dict[str, Any]):
                     "timestamp": reading["timestamp"],
                 }
             )
-            limit_collection(COLLECTIONS["SENSORS"], 10)
+            limit_collection(COLLECTIONS["SENSORS"], 50)
 
         with _state_lock:
             _sensor_state["accepted_reading"] = {
@@ -136,9 +136,12 @@ def get_sensor_snapshot() -> dict[str, Any]:
         }
 
 
-def get_sensor_history(limit: int = 10) -> list[dict[str, Any]]:
+def get_sensor_history(limit: int = 10, user_id: str | None = None) -> list[dict[str, Any]]:
     sensor_col = get_collection(COLLECTIONS["SENSORS"])
-    rows = list(sensor_col.find().sort("timestamp", -1).limit(limit))
+    if user_id:
+        rows = list(sensor_col.find({"user_id": user_id}).sort("timestamp", -1).limit(limit))
+    else:
+        rows = list(sensor_col.find({"user_id": {"$exists": False}}).sort("timestamp", -1).limit(limit))
     rows.reverse()
     return [
         {

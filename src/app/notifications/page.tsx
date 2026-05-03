@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Bell, CheckCircle2, Clock3, ShieldAlert } from "lucide-react";
 
 import { apiFetch } from "@/lib/api";
+import { getGuestHistory, useAuth } from "../components/AuthContext";
 
 type NotificationItem = {
   id: string;
@@ -30,21 +31,137 @@ function formatTime(value?: string | null) {
 }
 
 export default function NotificationsPage() {
+  const { user, isGuest, loading: authLoading } = useAuth();
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (authLoading) return;
     let active = true;
+
+    const buildGuestNotifications = (): NotificationItem[] => {
+      const guestHistory = getGuestHistory();
+      const notifications: NotificationItem[] = [];
+
+      guestHistory
+        .filter((item: any) => item.mode === "animal" || item.mode === "plant")
+        .slice(-8)
+        .reverse()
+        .forEach((item: any, index: number) => {
+          const isAnimal = item.mode === "animal";
+          notifications.push({
+            id: `guest-${item.mode}-${item.timestamp || index}`,
+            type: "warning",
+            title: isAnimal ? "Animal Threat Detected" : "Plant Disease Detected",
+            message: isAnimal
+              ? item.message || `Threat detected: ${item.animal_type || "Unknown animal"}`
+              : item.result || item.message || "Plant disease detected",
+            source: isAnimal ? "animal_detection" : "plant_detection",
+            timestamp:
+              typeof item.timestamp === "number"
+                ? new Date(item.timestamp).toISOString()
+                : item.timestamp || null,
+          });
+        });
+
+      guestHistory
+        .filter((item: any) => ["moisture", "temperature", "humidity"].includes(item.mode))
+        .slice(-8)
+        .reverse()
+        .forEach((item: any, index: number) => {
+          const timestamp =
+            typeof item.timestamp === "number"
+              ? new Date(item.timestamp).toISOString()
+              : item.timestamp || null;
+
+          if (typeof item.moisture === "number" && item.moisture <= 30) {
+            notifications.push({
+              id: `guest-soil-${item.timestamp || index}`,
+              type: "warning",
+              title: "Soil Looks Dry",
+              message: `Soil moisture is low at ${item.moisture}%. This area may need watering soon.`,
+              source: "soil",
+              timestamp,
+            });
+          }
+
+          if (typeof item.temperature === "number" && item.temperature >= 35) {
+            notifications.push({
+              id: `guest-temp-high-${item.timestamp || index}`,
+              type: "info",
+              title: "Temperature is on the High Side",
+              message: `The crop area is warm at ${item.temperature} degrees Celsius. Keep an eye on heat stress for common kharif and rabi crops.`,
+              source: "temperature",
+              timestamp,
+            });
+          } else if (typeof item.temperature === "number" && item.temperature <= 12) {
+            notifications.push({
+              id: `guest-temp-low-${item.timestamp || index}`,
+              type: "info",
+              title: "Temperature is on the Low Side",
+              message: `The crop area is cool at ${item.temperature} degrees Celsius. Sensitive crops may need attention in this weather.`,
+              source: "temperature",
+              timestamp,
+            });
+          }
+
+          if (item.obstacle) {
+            notifications.push({
+              id: `guest-obstacle-${item.timestamp || index}`,
+              type: "warning",
+              title: "Obstacle Was Detected",
+              message: "The bot reported an obstacle during a recorded reading session.",
+              source: "ultrasonic",
+              timestamp,
+            });
+          }
+        });
+
+      if (notifications.length === 0 && guestHistory.length > 0) {
+        const last = guestHistory[guestHistory.length - 1];
+        notifications.push({
+          id: "guest-stable",
+          type: "success",
+          title: "Farm Readings Look Normal",
+          message: "No urgent issue is being reported from your latest saved bot readings.",
+          source: "system",
+          timestamp:
+            typeof last?.timestamp === "number"
+              ? new Date(last.timestamp).toISOString()
+              : last?.timestamp || null,
+        });
+      }
+
+      return notifications;
+    };
 
     const load = async () => {
       try {
-        const response = await apiFetch("/api/system/notifications");
+        if (!active) return;
+
+        if (isGuest) {
+          const merged = buildGuestNotifications();
+          merged.sort((a: NotificationItem, b: NotificationItem) =>
+            String(b.timestamp || "").localeCompare(String(a.timestamp || ""))
+          );
+          setItems(merged);
+          setError(null);
+          return;
+        }
+
+        const query = user?.id ? `?user_id=${encodeURIComponent(user.id)}` : "";
+        const response = await apiFetch(`/api/system/notifications${query}`);
         if (!response.ok) throw new Error("Notifications could not be loaded");
 
         const payload = await response.json();
         if (!active) return;
-        setItems(Array.isArray(payload?.data) ? payload.data : []);
+        const backendItems = Array.isArray(payload?.data) ? payload.data : [];
+        const merged: NotificationItem[] = backendItems;
+        merged.sort((a: NotificationItem, b: NotificationItem) =>
+          String(b.timestamp || "").localeCompare(String(a.timestamp || ""))
+        );
+        setItems(merged);
         setError(null);
       } catch (err: any) {
         if (!active) return;
@@ -60,7 +177,7 @@ export default function NotificationsPage() {
       active = false;
       window.clearInterval(timer);
     };
-  }, []);
+  }, [authLoading, isGuest, user]);
 
   const summary = useMemo(() => {
     const warnings = items.filter((item) => item.type === "warning").length;

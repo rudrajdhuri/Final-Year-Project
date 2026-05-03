@@ -1,7 +1,6 @@
 from datetime import datetime
 
 from database import COLLECTIONS, get_collection
-from services.esp32_bridge import get_sensor_snapshot
 
 
 def _format_timestamp(value):
@@ -12,90 +11,87 @@ def _format_timestamp(value):
     return str(value)
 
 
-def _sensor_notifications():
-    snapshot = get_sensor_snapshot()
+def _sensor_notifications(user_id: str | None = None, limit: int = 4):
+    if not user_id or user_id == "guest":
+        return []
+
+    sensor_col = get_collection(COLLECTIONS["SENSORS"])
+    rows = list(sensor_col.find({"user_id": user_id}).sort("timestamp", -1).limit(limit))
     notifications = []
-    timestamp = snapshot.get("timestamp") or snapshot.get("last_seen")
 
-    if not snapshot.get("connected"):
-        return [
-            {
-                "id": "sensor-disconnected",
-                "type": "info",
-                "title": "ESP32 Stream Waiting",
-                "message": "The Raspberry Pi backend is waiting for live sensor data from the ESP32 hotspot.",
-                "source": "system",
-                "timestamp": timestamp,
-            }
-        ]
+    for row in rows:
+        timestamp = _format_timestamp(row.get("timestamp"))
 
-    if snapshot.get("obstacle") and snapshot.get("bot_running"):
-        notifications.append(
-            {
-                "id": "sensor-obstacle",
-                "type": "warning",
-                "title": "Bot Stopped for Safety",
-                "message": "Something is in front of the bot, so it has paused to avoid hitting it.",
-                "source": "ultrasonic",
-                "timestamp": timestamp,
-            }
-        )
+        moisture = row.get("moisture")
+        if isinstance(moisture, (int, float)) and moisture <= 30:
+            notifications.append(
+                {
+                    "id": f"sensor-moisture-{row.get('_id')}",
+                    "type": "warning",
+                    "title": "Soil Looks Dry",
+                    "message": f"Soil moisture is low at {moisture}%. This area may need watering soon.",
+                    "source": "soil",
+                    "timestamp": timestamp,
+                }
+            )
 
-    moisture = snapshot.get("moisture")
-    if isinstance(moisture, (int, float)) and moisture <= 30:
-        notifications.append(
-            {
-                "id": "sensor-moisture",
-                "type": "warning",
-                "title": "Soil Looks Dry",
-                "message": f"Soil moisture is low at {moisture}%. This area may need watering soon.",
-                "source": "soil",
-                "timestamp": timestamp,
-            }
-        )
+        temperature = row.get("temperature")
+        if isinstance(temperature, (int, float)) and temperature >= 35:
+            notifications.append(
+                {
+                    "id": f"sensor-temperature-high-{row.get('_id')}",
+                    "type": "info",
+                    "title": "Temperature is on the High Side",
+                    "message": f"The crop area is warm at {temperature} degrees Celsius. Keep an eye on heat stress for common kharif and rabi crops.",
+                    "source": "temperature",
+                    "timestamp": timestamp,
+                }
+            )
+        elif isinstance(temperature, (int, float)) and temperature <= 12:
+            notifications.append(
+                {
+                    "id": f"sensor-temperature-low-{row.get('_id')}",
+                    "type": "info",
+                    "title": "Temperature is on the Low Side",
+                    "message": f"The crop area is cool at {temperature} degrees Celsius. Sensitive crops may need attention in this weather.",
+                    "source": "temperature",
+                    "timestamp": timestamp,
+                }
+            )
 
-    temperature = snapshot.get("temperature")
-    if isinstance(temperature, (int, float)) and temperature >= 35:
-        notifications.append(
-            {
-                "id": "sensor-temperature-high",
-                "type": "info",
-                "title": "Temperature is on the High Side",
-                "message": f"The crop area is warm at {temperature} degrees Celsius. Keep an eye on heat stress for common kharif and rabi crops.",
-                "source": "temperature",
-                "timestamp": timestamp,
-            }
-        )
-    elif isinstance(temperature, (int, float)) and temperature <= 12:
-        notifications.append(
-            {
-                "id": "sensor-temperature-low",
-                "type": "info",
-                "title": "Temperature is on the Low Side",
-                "message": f"The crop area is cool at {temperature} degrees Celsius. Sensitive crops may need attention in this weather.",
-                "source": "temperature",
-                "timestamp": timestamp,
-            }
-        )
+        if row.get("obstacle"):
+            notifications.append(
+                {
+                    "id": f"sensor-obstacle-{row.get('_id')}",
+                    "type": "warning",
+                    "title": "Obstacle Was Detected",
+                    "message": "The bot reported an obstacle during a recorded reading session.",
+                    "source": "ultrasonic",
+                    "timestamp": timestamp,
+                }
+            )
 
-    if not notifications:
+    if not notifications and rows:
         notifications.append(
             {
                 "id": "sensor-stable",
                 "type": "success",
                 "title": "Farm Readings Look Normal",
-                "message": "No urgent issue is being reported from the latest bot readings.",
+                "message": "No urgent issue is being reported from your latest saved bot readings.",
                 "source": "system",
-                "timestamp": timestamp,
+                "timestamp": _format_timestamp(rows[0].get("timestamp")),
             }
         )
 
     return notifications
 
 
-def _animal_notifications(limit: int = 4):
+def _animal_notifications(user_id: str | None = None, limit: int = 4):
+    if not user_id or user_id == "guest":
+        return []
+
     animal_col = get_collection(COLLECTIONS["ANIMALS"])
-    rows = list(animal_col.find().sort("timestamp", -1).limit(limit))
+    rows = list(animal_col.find({"user_id": user_id}).sort("timestamp", -1).limit(limit))
     notifications = []
 
     for row in rows:
@@ -117,9 +113,12 @@ def _animal_notifications(limit: int = 4):
     return notifications
 
 
-def _plant_notifications(limit: int = 4):
+def _plant_notifications(user_id: str | None = None, limit: int = 4):
+    if not user_id or user_id == "guest":
+        return []
+
     plant_col = get_collection(COLLECTIONS["PLANTS"])
-    rows = list(plant_col.find().sort("timestamp", -1).limit(limit))
+    rows = list(plant_col.find({"user_id": user_id}).sort("timestamp", -1).limit(limit))
     notifications = []
 
     for row in rows:
@@ -142,7 +141,11 @@ def _plant_notifications(limit: int = 4):
     return notifications
 
 
-def get_notifications(limit: int = 10):
-    notifications = _sensor_notifications() + _animal_notifications() + _plant_notifications()
+def get_notifications(limit: int = 10, user_id: str | None = None):
+    notifications = (
+        _sensor_notifications(user_id=user_id)
+        + _animal_notifications(user_id=user_id)
+        + _plant_notifications(user_id=user_id)
+    )
     notifications.sort(key=lambda item: item.get("timestamp") or "", reverse=True)
     return notifications[:limit]

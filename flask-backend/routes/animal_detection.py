@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 import base64
 import os
 import uuid
@@ -75,7 +75,7 @@ def _save_and_cleanup(user_id, threat, animal_name, confidence, result_text, fil
             "filename": filename,
             "message": result_text,
             "image_b64": image_b64,
-            "timestamp": datetime.utcnow(),
+            "timestamp": datetime.now(timezone.utc),
         }
     )
     limit_collection(COLLECTIONS["ANIMALS"])
@@ -153,7 +153,7 @@ def animal_history():
     try:
         user_id = request.args.get("user_id", "guest")
         animal_col = get_collection(COLLECTIONS["ANIMALS"])
-        records = list(animal_col.find({"user_id": user_id}).sort("timestamp", -1))
+        records = list(animal_col.find({"user_id": user_id}).sort("timestamp", -1).limit(15))
         for row in records:
             row["_id"] = str(row["_id"])
             row["timestamp"] = row["timestamp"].isoformat()

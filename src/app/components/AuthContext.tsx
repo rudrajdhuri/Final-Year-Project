@@ -75,9 +75,9 @@ export function getGuestHistory(): any[] {
 export function pushGuestHistory(record: any) {
   const arr    = getGuestHistory();
   arr.push(record);
-  const last10 = arr.slice(-10);
-  sessionStorage.setItem("agribot_guest_history", JSON.stringify(last10));
-  return last10;
+  const last50 = arr.slice(-50);
+  sessionStorage.setItem("agribot_guest_history", JSON.stringify(last50));
+  return last50;
 }
 
 export function clearGuestHistory() {
