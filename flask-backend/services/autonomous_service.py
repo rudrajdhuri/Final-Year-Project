@@ -629,10 +629,10 @@ MIN_SEGMENT_MS = 250
 PROFILE_LIMIT = 10
 
 COMMAND_TO_RAW = {
-    "F": "MoveCar,1",
-    "B": "MoveCar,2",
-    "L": "MoveCar,3",
-    "R": "MoveCar,4",
+    "F": "MoveCar,2",
+    "B": "MoveCar,1",
+    "L": "MoveCar,4",
+    "R": "MoveCar,3",
     "S": "MoveCar,0",
 }
 
@@ -691,6 +691,7 @@ _auto_thread: threading.Thread | None = None
 _recording_state: dict[str, Any] = {
     "active": False,
     "user_id": "guest",
+    "owner_session_id": None,
     "started_at": None,
     "last_event_at": None,
     "last_direction": None,
@@ -711,6 +712,7 @@ _autonomous_state: dict[str, Any] = {
     "progress_ms": 0,
     "total_duration_ms": 0,
     "user_id": "guest",
+    "owner_session_id": None,
     "error": None,
     "breaks_taken": 0,
 }
@@ -753,7 +755,7 @@ def _flush_recording_segment(current_time: datetime):
     _recording_state["last_event_at"] = current_time
 
 
-def start_manual_recording(user_id: str = "guest") -> dict[str, Any]:
+def start_manual_recording(user_id: str = "guest", owner_session_id: str | None = None) -> dict[str, Any]:
     with _state_lock:
         if _autonomous_state["running"]:
             raise RuntimeError("Stop autonomous mode before starting a new training profile")
@@ -763,6 +765,7 @@ def start_manual_recording(user_id: str = "guest") -> dict[str, Any]:
         current_time = _now()
         _recording_state["active"] = True
         _recording_state["user_id"] = user_id
+        _recording_state["owner_session_id"] = owner_session_id
         _recording_state["started_at"] = current_time
         _recording_state["last_event_at"] = current_time
         _recording_state["last_direction"] = "S"
@@ -785,11 +788,13 @@ def stop_manual_recording(profile_name: str) -> dict[str, Any]:
         started_at = _recording_state["started_at"]
         segments = list(_recording_state["segments"])
         user_id = _recording_state["user_id"]
+        owner_session_id = _recording_state.get("owner_session_id")
 
         _recording_state["active"] = False
         _recording_state["started_at"] = None
         _recording_state["last_event_at"] = None
         _recording_state["last_direction"] = None
+        _recording_state["owner_session_id"] = None
         _recording_state["segments"] = []
 
     if not segments:
@@ -801,6 +806,7 @@ def stop_manual_recording(profile_name: str) -> dict[str, Any]:
     profile_doc = {
         "name": name,
         "user_id": user_id,
+        "owner_session_id": owner_session_id,
         "segments": segments,
         "segment_count": len(segments),
         "breakpoints_ms": breakpoints_ms,
@@ -880,8 +886,11 @@ def _serialize_profile(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def get_profiles(user_id: str | None = None) -> list[dict[str, Any]]:
-    query = {"user_id": user_id} if user_id and user_id != "guest" else {}
+def get_profiles(user_id: str | None = None, owner_session_id: str | None = None) -> list[dict[str, Any]]:
+    if user_id and user_id != "guest":
+        query = {"user_id": user_id}
+    else:
+        query = {"user_id": "guest", "owner_session_id": owner_session_id} if owner_session_id else {"_id": None}
     rows = list(
         get_collection(COLLECTIONS["PROFILES"])
         .find(query)
@@ -898,9 +907,9 @@ def _stop_detection_sessions():
         pass
 
 
-def _start_detection_sessions(user_id: str):
-    start_detection("animal", user_id=user_id, duration_seconds=None)
-    start_detection("plant", user_id=user_id, duration_seconds=None)
+def _start_detection_sessions(user_id: str, owner_session_id: str | None):
+    start_detection("animal", user_id=user_id, duration_seconds=None, owner_session_id=owner_session_id)
+    start_detection("plant", user_id=user_id, duration_seconds=None, owner_session_id=owner_session_id)
 
 
 def _set_autonomous_state(**updates):
@@ -1020,13 +1029,14 @@ def _run_autonomous_profile(profile_doc: dict[str, Any]):
     breakpoints_ms = list(profile_doc.get("breakpoints_ms", []))
     total_duration_ms = int(profile_doc.get("total_duration_ms", 0))
     user_id = profile_doc.get("user_id", "guest")
+    owner_session_id = profile_doc.get("_active_owner_session_id")
 
     try:
         _control_client.set_speed(AUTONOMOUS_SPEED)
         _control_client.stop()
         clear_arm()
         set_autonomous_motion(True, "S")
-        _start_detection_sessions(user_id)
+        _start_detection_sessions(user_id, owner_session_id)
 
         progress_ms = 0
         next_break_index = 0
@@ -1096,7 +1106,7 @@ def _run_autonomous_profile(profile_doc: dict[str, Any]):
         _stop_detection_sessions()
 
 
-def start_autonomous(profile_id: str, user_id: str = "guest") -> dict[str, Any]:
+def start_autonomous(profile_id: str, user_id: str = "guest", owner_session_id: str | None = None) -> dict[str, Any]:
     global _auto_thread
 
     try:
@@ -1104,9 +1114,14 @@ def start_autonomous(profile_id: str, user_id: str = "guest") -> dict[str, Any]:
     except Exception as exc:
         raise RuntimeError("Selected training profile id is invalid") from exc
 
-    row = get_collection(COLLECTIONS["PROFILES"]).find_one({"_id": object_id}) if object_id else None
+    if user_id and user_id != "guest":
+        query = {"_id": object_id, "user_id": user_id}
+    else:
+        query = {"_id": object_id, "user_id": "guest", "owner_session_id": owner_session_id}
+    row = get_collection(COLLECTIONS["PROFILES"]).find_one(query) if object_id else None
     if row is None:
         raise RuntimeError("Selected training profile was not found")
+    row["_active_owner_session_id"] = owner_session_id
 
     with _state_lock:
         if _recording_state["active"]:
@@ -1130,6 +1145,7 @@ def start_autonomous(profile_id: str, user_id: str = "guest") -> dict[str, Any]:
                 "progress_ms": 0,
                 "total_duration_ms": int(row.get("total_duration_ms", 0)),
                 "user_id": user_id,
+                "owner_session_id": owner_session_id,
                 "error": None,
                 "breaks_taken": 0,
             }
@@ -1159,9 +1175,10 @@ def stop_autonomous() -> dict[str, Any]:
     return get_autonomous_status()
 
 
-def get_autonomous_status() -> dict[str, Any]:
+def get_autonomous_status(viewer_session_id: str | None = None) -> dict[str, Any]:
     with _state_lock:
         status = dict(_autonomous_state)
+    owner = bool(viewer_session_id and status.get("owner_session_id") == viewer_session_id)
 
     total_duration_ms = status.get("total_duration_ms") or 0
     progress_ms = min(total_duration_ms, status.get("progress_ms") or 0)
@@ -1180,8 +1197,39 @@ def get_autonomous_status() -> dict[str, Any]:
         "progress_ms": progress_ms,
         "total_duration_ms": total_duration_ms,
         "progress_ratio": round(progress_ratio, 4),
-        "error": status["error"],
-        "breaks_taken": status["breaks_taken"],
+        "error": status["error"] if owner or not status["running"] else None,
+        "breaks_taken": status["breaks_taken"] if owner else 0,
         "speed_pwm": AUTONOMOUS_SPEED,
         "obstacle": bool(get_sensor_snapshot().get("obstacle")),
+        "owner": owner,
+        "blocked": status["running"] and not owner,
     }
+
+
+def update_owner_user_id(owner_session_id: str | None, user_id: str) -> None:
+    if not owner_session_id or not user_id:
+        return
+    with _state_lock:
+        if _recording_state.get("owner_session_id") == owner_session_id:
+            _recording_state["user_id"] = user_id
+        if _autonomous_state.get("owner_session_id") == owner_session_id:
+            _autonomous_state["user_id"] = user_id
+
+
+def stop_all_for_lock_release() -> None:
+    with _state_lock:
+        running = bool(_autonomous_state["running"])
+        recording = bool(_recording_state["active"])
+        _recording_state["active"] = False
+        _recording_state["owner_session_id"] = None
+
+    if running:
+        try:
+            stop_autonomous()
+        except Exception:
+            pass
+    elif recording:
+        try:
+            _control_client.stop()
+        except Exception:
+            pass

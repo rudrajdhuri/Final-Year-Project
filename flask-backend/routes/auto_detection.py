@@ -2,11 +2,13 @@ from flask import Blueprint, jsonify, request, Response
 
 from services.live_detection_service import (
     frame_stream_response,
+    frame_snapshot_response,
     get_all_detection_status,
     get_detection_status,
     start_detection,
     stop_detection,
 )
+from services.session_lock_service import acquire_lock, heartbeat_lock, release_lock, require_lock_owner
 
 
 auto_detection_bp = Blueprint("auto_detection", __name__)
@@ -19,12 +21,23 @@ def start_auto(mode):
 
     data = request.get_json(silent=True) or {}
     user_id = data.get("user_id", "guest")
+    session_id = data.get("session_id")
+    lock_acquired = False
 
     try:
-        status = start_detection(mode, user_id)
+        acquire_lock("model_manual", user_id=user_id, session_id=session_id)
+        lock_acquired = True
+        status = start_detection(mode, user_id, owner_session_id=session_id)
+        heartbeat_lock(session_id, user_id)
     except ValueError as exc:
         return jsonify({"success": False, "error": str(exc)}), 400
+    except RuntimeError as exc:
+        if lock_acquired:
+            release_lock(session_id)
+        return jsonify({"success": False, "error": str(exc)}), 423
     except Exception as exc:
+        if lock_acquired:
+            release_lock(session_id)
         return jsonify({"success": False, "error": str(exc)}), 500
 
     return jsonify({"success": True, "message": f"{mode.title()} detection started", "status": status})
@@ -35,10 +48,18 @@ def stop_auto(mode):
     if mode not in ("animal", "plant", "all"):
         return jsonify({"success": False, "error": "Invalid mode"}), 400
 
+    data = request.get_json(silent=True) or {}
+    session_id = data.get("session_id")
     try:
-        status = stop_detection(mode)
+        if session_id:
+            require_lock_owner(session_id)
+        status = stop_detection(mode, owner_session_id=session_id)
+        if mode == "all" or not any(item["running"] for item in status.values() if isinstance(item, dict)):
+            release_lock(session_id)
     except ValueError as exc:
         return jsonify({"success": False, "error": str(exc)}), 400
+    except RuntimeError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 423
 
     return jsonify({"success": True, "message": f"Stopped {mode}", "status": status})
 
@@ -49,7 +70,7 @@ def get_status(mode):
         return jsonify({"success": False, "error": "Invalid mode"}), 400
 
     try:
-        status = get_detection_status(mode)
+        status = get_detection_status(mode, request.args.get("session_id"))
     except ValueError as exc:
         return jsonify({"success": False, "error": str(exc)}), 400
 
@@ -58,25 +79,14 @@ def get_status(mode):
 
 @auto_detection_bp.route("/status", methods=["GET"])
 def get_all_status():
-    return jsonify(get_all_detection_status())
+    return jsonify(get_all_detection_status(request.args.get("session_id")))
 
 
 @auto_detection_bp.route("/stream", methods=["GET"])
 def live_stream():
-    return frame_stream_response()
+    return frame_stream_response(request.args.get("session_id"))
 
 
 @auto_detection_bp.route("/snapshot", methods=["GET"])
 def snapshot():
-    """Returns the latest single JPEG frame from the live detection worker.
-    Frontend polls this every 2 seconds instead of consuming the MJPEG stream.
-    """
-    from services.live_detection_service import _latest_frame, _lock
-
-    with _lock:
-        frame = _latest_frame
-
-    if frame is None:
-        return jsonify({"error": "No frame available yet"}), 404
-
-    return Response(frame, mimetype="image/jpeg")
+    return frame_snapshot_response(request.args.get("session_id"))

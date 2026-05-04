@@ -98,6 +98,20 @@ export function clearGuestSessionData() {
   sessionStorage.removeItem("agribot_guest_soil_page_history");
 }
 
+export function getClientSessionId() {
+  const key = "agribot_client_session_id";
+  if (typeof window === "undefined") return "server-session";
+  let value = sessionStorage.getItem(key);
+  if (!value) {
+    value =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    sessionStorage.setItem(key, value);
+  }
+  return value;
+}
+
 // ── SHA-256 ──
 function rightRotate(value: number, amount: number) {
   return (value >>> amount) | (value << (32 - amount));

@@ -3,7 +3,10 @@ import bcrypt
 import hashlib
 import dns.resolver
 from datetime import datetime, timezone
-from database import get_collection, limit_collection
+from database import COLLECTIONS, get_collection, limit_collection
+from services.autonomous_service import update_owner_user_id as update_autonomous_owner_user_id
+from services.live_detection_service import update_owner_user_id as update_detection_owner_user_id
+from services.session_lock_service import transfer_owner_session
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -39,6 +42,7 @@ def signup():
         email    = data.get('email', '').strip().lower()
         password = data.get('password', '')  # SHA-256 from frontend
         guest_history = data.get('guest_history', [])
+        client_session_id = data.get('client_session_id')
 
         if not name or not email or not password:
             return jsonify({"success": False, "error": "All fields are required"}), 400
@@ -69,6 +73,7 @@ def signup():
         user_id = str(result.inserted_id)
         if guest_history:
             _migrate_guest_history(user_id, guest_history)
+        _migrate_guest_runtime(user_id, client_session_id)
 
         return jsonify({
             "success": True,
@@ -89,6 +94,7 @@ def signin():
         email    = data.get('email', '').strip().lower()
         password = data.get('password', '')  # SHA-256 from frontend
         guest_history = data.get('guest_history', [])
+        client_session_id = data.get('client_session_id')
 
         if not email or not password:
             return jsonify({"success": False, "error": "All fields are required"}), 400
@@ -109,6 +115,7 @@ def signin():
         user_id = str(user['_id'])
         if guest_history:
             _migrate_guest_history(user_id, guest_history)
+        _migrate_guest_runtime(user_id, client_session_id)
 
         return jsonify({
             "success": True,
@@ -136,6 +143,7 @@ def google_auth():
         google_id = data.get('google_id', '')
         picture   = data.get('picture', '')
         guest_history = data.get('guest_history', [])
+        client_session_id = data.get('client_session_id')
 
         if not email or not google_id:
             return jsonify({"success": False, "error": "Invalid Google data"}), 400
@@ -155,6 +163,7 @@ def google_auth():
             user_id = str(existing['_id'])
             if guest_history:
                 _migrate_guest_history(user_id, guest_history)
+            _migrate_guest_runtime(user_id, client_session_id)
 
             return jsonify({
                 "success": True,
@@ -180,6 +189,7 @@ def google_auth():
         user_id = str(result.inserted_id)
         if guest_history:
             _migrate_guest_history(user_id, guest_history)
+        _migrate_guest_runtime(user_id, client_session_id)
 
         return jsonify({
             "success": True,
@@ -260,3 +270,19 @@ def _migrate_guest_history(user_id: str, guest_records: list):
                 "timestamp": ts
             })
             limit_collection("sensor_data", 50)
+
+
+def _migrate_guest_runtime(user_id: str, client_session_id: str | None):
+    if not client_session_id:
+        return
+
+    now = datetime.now(timezone.utc)
+    profiles_col = get_collection(COLLECTIONS["PROFILES"])
+    profiles_col.update_many(
+        {"user_id": "guest", "owner_session_id": client_session_id},
+        {"$set": {"user_id": user_id, "updated_at": now}},
+    )
+
+    transfer_owner_session(client_session_id, user_id)
+    update_detection_owner_user_id(client_session_id, user_id)
+    update_autonomous_owner_user_id(client_session_id, user_id)

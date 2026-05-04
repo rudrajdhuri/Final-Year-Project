@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Mail, Lock, Eye, EyeOff, User, Leaf, Loader2, Check, X, ArrowLeft, CheckCircle } from "lucide-react";
-import { useAuth, sha256, getGuestHistory, clearGuestHistory } from "../components/AuthContext";
+import { useAuth, sha256, getGuestHistory, clearGuestHistory, getClientSessionId } from "../components/AuthContext";
 import ThemeToggle from "../components/ThemeToggle";
 import { apiFetch } from "@/lib/api";
 
@@ -63,7 +63,13 @@ export default function SignupPage() {
       const res = await apiFetch("/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password: hashedPwd, guest_history: guestHistory }),
+        body: JSON.stringify({
+          name,
+          email,
+          password: hashedPwd,
+          guest_history: guestHistory,
+          client_session_id: getClientSessionId(),
+        }),
       });
 
       const data = await res.json();

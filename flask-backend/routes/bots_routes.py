@@ -130,6 +130,7 @@ from services.autonomous_service import (
     stop_autonomous,
     stop_manual_recording,
 )
+from services.session_lock_service import acquire_lock, heartbeat_lock, release_lock, require_lock_owner
 
 bots_bp = Blueprint("bots_bp", __name__)
 
@@ -174,20 +175,24 @@ def log_bot_command_route():
 def start_training_route():
     data = request.get_json(silent=True) or {}
     try:
-        status = start_manual_recording(data.get("user_id", "guest"))
+        session_id = data.get("session_id")
+        require_lock_owner(session_id)
+        status = start_manual_recording(data.get("user_id", "guest"), owner_session_id=session_id)
+        heartbeat_lock(session_id, data.get("user_id", "guest"))
         return jsonify({"success": True, "status": status}), 200
     except RuntimeError as exc:
-        return jsonify({"success": False, "error": str(exc)}), 400
+        return jsonify({"success": False, "error": str(exc)}), 423
 
 
 @bots_bp.route("/bots/training/stop", methods=["POST"])
 def stop_training_route():
     data = request.get_json(silent=True) or {}
     try:
+        require_lock_owner(data.get("session_id"))
         result = stop_manual_recording(data.get("profile_name", ""))
         return jsonify(result), 200
     except RuntimeError as exc:
-        return jsonify({"success": False, "error": str(exc)}), 400
+        return jsonify({"success": False, "error": str(exc)}), 423
 
 
 @bots_bp.route("/bots/training/status", methods=["GET"])
@@ -198,28 +203,42 @@ def training_status_route():
 @bots_bp.route("/bots/profiles", methods=["GET"])
 def profiles_route():
     user_id = request.args.get("user_id")
-    return jsonify({"success": True, "profiles": get_profiles(user_id=user_id)}), 200
+    return jsonify({"success": True, "profiles": get_profiles(user_id=user_id, owner_session_id=request.args.get("session_id"))}), 200
 
 
 @bots_bp.route("/bots/autonomous/start", methods=["POST"])
 def autonomous_start_route():
     data = request.get_json(silent=True) or {}
+    session_id = data.get("session_id")
+    lock_acquired = False
     try:
+        acquire_lock("autonomous", user_id=data.get("user_id", "guest"), session_id=session_id)
+        lock_acquired = True
         status = start_autonomous(
             profile_id=data.get("profile_id", ""),
             user_id=data.get("user_id", "guest"),
+            owner_session_id=session_id,
         )
+        heartbeat_lock(session_id, data.get("user_id", "guest"))
         return jsonify({"success": True, "status": status}), 200
     except RuntimeError as exc:
-        return jsonify({"success": False, "error": str(exc)}), 400
+        if lock_acquired:
+            release_lock(session_id)
+        return jsonify({"success": False, "error": str(exc)}), 423
 
 
 @bots_bp.route("/bots/autonomous/stop", methods=["POST"])
 def autonomous_stop_route():
+    data = request.get_json(silent=True) or {}
+    try:
+        require_lock_owner(data.get("session_id"))
+    except RuntimeError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 423
     status = stop_autonomous()
+    release_lock(data.get("session_id"))
     return jsonify({"success": True, "status": status}), 200
 
 
 @bots_bp.route("/bots/autonomous/status", methods=["GET"])
 def autonomous_status_route():
-    return jsonify({"success": True, "status": get_autonomous_status()}), 200
+    return jsonify({"success": True, "status": get_autonomous_status(request.args.get("session_id"))}), 200

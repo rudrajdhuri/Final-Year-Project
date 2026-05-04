@@ -10,6 +10,7 @@ import cv2
 from flask import Response
 
 from database import COLLECTIONS, get_collection, limit_collection
+from services.session_lock_service import is_lock_owner
 
 
 UPLOAD_FOLDER = "uploads"
@@ -22,7 +23,7 @@ SAVE_COOLDOWN_SECONDS = 8
 STREAM_BOUNDARY = b"--frame"
 DETECTION_HISTORY_LIMIT = 20
 
-_lock = threading.Lock()
+_lock = threading.RLock()
 _worker_thread: threading.Thread | None = None
 _flask_app = None
 _camera_handle = None
@@ -40,6 +41,7 @@ _states: dict[str, dict[str, Any]] = {
         "ends_at": None,
         "completed_at": None,
         "user_id": "guest",
+        "owner_session_id": None,
         "error": None,
         "last_result": None,
         "last_detection": None,
@@ -54,6 +56,7 @@ _states: dict[str, dict[str, Any]] = {
         "ends_at": None,
         "completed_at": None,
         "user_id": "guest",
+        "owner_session_id": None,
         "error": None,
         "last_result": None,
         "last_detection": None,
@@ -81,6 +84,18 @@ def _iso(value: datetime | None) -> str | None:
 
 def _shared_active() -> bool:
     return any(mode_state["running"] for mode_state in _states.values())
+
+
+def _active_owner_session_id() -> str | None:
+    for mode_state in _states.values():
+        if mode_state["running"]:
+            return mode_state.get("owner_session_id")
+    return None
+
+
+def _viewer_can_see(session_id: str | None) -> bool:
+    owner_session_id = _active_owner_session_id()
+    return bool(owner_session_id and session_id == owner_session_id and is_lock_owner(session_id))
 
 
 def _get_animal_predictor():
@@ -299,6 +314,7 @@ def _refresh_expired_modes(current_time: datetime) -> None:
             mode_state["running"] = False
             mode_state["completed"] = True
             mode_state["completed_at"] = current_time
+            mode_state["owner_session_id"] = None
 
 
 def _run_worker():
@@ -427,7 +443,12 @@ def _run_worker():
             _worker_thread = None
 
 
-def start_detection(mode: str, user_id: str = "guest", duration_seconds: int | None = SESSION_DURATION_SECONDS) -> dict[str, Any]:
+def start_detection(
+    mode: str,
+    user_id: str = "guest",
+    duration_seconds: int | None = SESSION_DURATION_SECONDS,
+    owner_session_id: str | None = None,
+) -> dict[str, Any]:
     global _worker_thread
 
     if mode not in _states:
@@ -441,6 +462,7 @@ def start_detection(mode: str, user_id: str = "guest", duration_seconds: int | N
         _states[mode]["ends_at"] = current_time + timedelta(seconds=duration_seconds) if duration_seconds else None
         _states[mode]["completed_at"] = None
         _states[mode]["user_id"] = user_id
+        _states[mode]["owner_session_id"] = owner_session_id
         _states[mode]["error"] = None
         _states[mode]["last_result"] = None
         _states[mode]["last_detection"] = None
@@ -454,10 +476,10 @@ def start_detection(mode: str, user_id: str = "guest", duration_seconds: int | N
         _worker_thread = threading.Thread(target=_run_worker, name="live-detection-worker", daemon=True)
         _worker_thread.start()
 
-    return get_detection_status(mode)
+    return get_detection_status(mode, owner_session_id)
 
 
-def stop_detection(mode: str) -> dict[str, Any]:
+def stop_detection(mode: str, owner_session_id: str | None = None) -> dict[str, Any]:
     if mode not in _states and mode != "all":
         raise ValueError("Invalid detection mode")
 
@@ -465,14 +487,33 @@ def stop_detection(mode: str) -> dict[str, Any]:
     with _lock:
         targets = list(_states.keys()) if mode == "all" else [mode]
         for target in targets:
+            if owner_session_id and _states[target].get("owner_session_id") != owner_session_id:
+                continue
             _states[target]["running"] = False
             _states[target]["completed"] = True
             _states[target]["completed_at"] = current_time
+            _states[target]["owner_session_id"] = None
 
-    return get_all_detection_status()
+    return get_all_detection_status(owner_session_id)
 
 
-def get_detection_status(mode: str) -> dict[str, Any]:
+def update_owner_user_id(owner_session_id: str | None, user_id: str) -> None:
+    if not owner_session_id or not user_id:
+        return
+    with _lock:
+        for mode_state in _states.values():
+            if mode_state.get("owner_session_id") == owner_session_id:
+                mode_state["user_id"] = user_id
+
+
+def stop_all_for_lock_release() -> None:
+    try:
+        stop_detection("all")
+    except Exception:
+        pass
+
+
+def get_detection_status(mode: str, viewer_session_id: str | None = None) -> dict[str, Any]:
     if mode not in _states:
         raise ValueError("Invalid detection mode")
 
@@ -482,6 +523,11 @@ def get_detection_status(mode: str) -> dict[str, Any]:
         mode_state = dict(_states[mode])
         shared_active = _shared_active()
         active_modes = [name for name, state in _states.items() if state["running"]]
+        owner = bool(
+            viewer_session_id
+            and mode_state.get("owner_session_id") == viewer_session_id
+            and is_lock_owner(viewer_session_id)
+        )
 
     remaining_seconds = 0
     if mode_state["running"] and mode_state["ends_at"]:
@@ -500,30 +546,32 @@ def get_detection_status(mode: str) -> dict[str, Any]:
         "completed_at": _iso(mode_state["completed_at"]),
         "remaining_seconds": remaining_seconds,
         "detection_count": mode_state["detection_count"],
-        "last_result": mode_state["last_result"],
-        "last_detection": mode_state["last_detection"],
-        "last_inference_at": _iso(mode_state["last_inference_at"]),
+        "last_result": mode_state["last_result"] if owner else None,
+        "last_detection": mode_state["last_detection"] if owner else None,
+        "last_inference_at": _iso(mode_state["last_inference_at"]) if owner else None,
         "error": mode_state["error"],
         "stream_active": shared_active,
         "active_modes": active_modes,
         "frame_skip": FRAME_SKIP,
         "duration_seconds": duration_seconds,
+        "owner": owner,
+        "blocked": mode_state["running"] and not owner,
     }
 
 
-def get_all_detection_status() -> dict[str, Any]:
+def get_all_detection_status(viewer_session_id: str | None = None) -> dict[str, Any]:
     return {
-        "animal": get_detection_status("animal"),
-        "plant": get_detection_status("plant"),
-        "stream_active": any(get_detection_status(mode)["running"] for mode in _states),
+        "animal": get_detection_status("animal", viewer_session_id),
+        "plant": get_detection_status("plant", viewer_session_id),
+        "stream_active": any(get_detection_status(mode, viewer_session_id)["running"] for mode in _states),
     }
 
 
-def frame_stream_response():
+def frame_stream_response(viewer_session_id: str | None = None):
     def generator():
         while True:
             with _lock:
-                frame = _latest_frame
+                frame = _latest_frame if _viewer_can_see(viewer_session_id) else None
                 active = _shared_active()
 
             if frame is not None:
@@ -544,9 +592,9 @@ def frame_stream_response():
     return Response(generator(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
 
-def frame_snapshot_response():
+def frame_snapshot_response(viewer_session_id: str | None = None):
     with _lock:
-        frame = _latest_frame
+        frame = _latest_frame if _viewer_can_see(viewer_session_id) else None
         active = _shared_active()
 
     if frame is None:

@@ -647,7 +647,7 @@ import {
   Upload,
 } from "lucide-react";
 
-import { pushGuestHistory, useAuth } from "./AuthContext";
+import { getClientSessionId, pushGuestHistory, useAuth } from "./AuthContext";
 import { apiFetch, getApiUrl } from "@/lib/api";
 
 type Mode = "animal" | "plant";
@@ -669,6 +669,8 @@ type DetectionStatus = {
   active_modes: string[];
   frame_skip: number;
   duration_seconds: number;
+  owner?: boolean;
+  blocked?: boolean;
 };
 
 type AllStatuses = {
@@ -682,6 +684,8 @@ type AutonomousEnvelope = {
   status: {
     running: boolean;
     profile_name: string | null;
+    owner?: boolean;
+    blocked?: boolean;
   };
 };
 
@@ -773,7 +777,7 @@ function ResultCard({ result, mode }: { result: any; mode: Mode }) {
 // ─── Shared photo-based snapshot display ─────────────────────────────────────
 // Polls /api/auto/snapshot every 2s. Shows loader in the gap between photos.
 // No MJPEG stream is consumed — keeps Pi cool.
-function useSnapshotCycle(active: boolean) {
+function useSnapshotCycle(active: boolean, sessionId: string) {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [showLoader, setShowLoader] = useState(false);
   const cycleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -802,7 +806,10 @@ function useSnapshotCycle(active: boolean) {
       setShowLoader(true);
 
       try {
-        const res = await apiFetch(`/api/auto/snapshot?t=${Date.now()}`, { cache: "no-store" });
+        const res = await apiFetch(
+          `/api/auto/snapshot?session_id=${encodeURIComponent(sessionId)}&t=${Date.now()}`,
+          { cache: "no-store" }
+        );
         if (!mountedRef.current) return;
 
         if (res.ok) {
@@ -830,7 +837,7 @@ function useSnapshotCycle(active: boolean) {
     };
 
     void fetchPhoto();
-  }, [active]);
+  }, [active, sessionId]);
 
   return { photoUrl, showLoader };
 }
@@ -894,12 +901,16 @@ function DetectionTab({
   mode,
   statuses,
   autonomousRunning,
+  autonomousOwner,
   autonomousProfileName,
+  sessionId,
 }: {
   mode: Mode;
   statuses: AllStatuses | null;
   autonomousRunning: boolean;
+  autonomousOwner: boolean;
   autonomousProfileName: string | null;
+  sessionId: string;
 }) {
   const { user, isGuest } = useAuth();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -908,10 +919,11 @@ function DetectionTab({
   const status = statuses?.[mode] || null;
   const currentLiveResult = status?.last_detection || status?.last_result || null;
   const liveSessionRunning = Boolean(status?.running);
+  const ownedLiveSessionRunning = liveSessionRunning && Boolean(status?.owner);
+  const ownedAutonomousRunning = autonomousRunning && autonomousOwner;
 
-  // Photo-based snapshot: active when live detection OR autonomous is running
-  const snapshotActive = liveSessionRunning || autonomousRunning;
-  const { photoUrl, showLoader } = useSnapshotCycle(snapshotActive);
+  const snapshotActive = ownedLiveSessionRunning || ownedAutonomousRunning;
+  const { photoUrl, showLoader } = useSnapshotCycle(snapshotActive, sessionId);
 
   const [uploadImage, setUploadImage] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -938,11 +950,25 @@ function DetectionTab({
   }, [isGuest, mode, status]);
 
   const controlsLocked = captureBusy || detectBusy || sessionBusy;
-  const showAutonomousOnly = autonomousRunning;
-  const showManualStopOnly = liveSessionRunning && !showAutonomousOnly;
-  const showIdleControls = !liveSessionRunning && !showAutonomousOnly;
+  const showAutonomousOnly = ownedAutonomousRunning;
+  const showManualStopOnly = ownedLiveSessionRunning && !showAutonomousOnly;
+  const showIdleControls = !ownedLiveSessionRunning && !ownedAutonomousRunning;
   const bigBoxUpload = uploadImage || previewImage;
   const title = mode === "animal" ? "Animal Detection" : "Plant Disease Detection";
+
+  useEffect(() => {
+    if (!ownedLiveSessionRunning && !ownedAutonomousRunning) return;
+    const heartbeat = () => {
+      void apiFetch("/api/session/heartbeat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId, user_id: user?.id || "guest" }),
+      }).catch(() => {});
+    };
+    heartbeat();
+    const timer = window.setInterval(heartbeat, 15000);
+    return () => window.clearInterval(timer);
+  }, [ownedAutonomousRunning, ownedLiveSessionRunning, sessionId, user?.id]);
 
   const handleFile = (file: File) => {
     const reader = new FileReader();
@@ -1021,13 +1047,22 @@ function DetectionTab({
   const startLiveDetection = async () => {
     setSessionBusy(true);
     try {
-      await apiFetch(`/api/auto/start/${mode}`, {
+      const response = await apiFetch(`/api/auto/start/${mode}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: user?.id || "guest" }),
+        body: JSON.stringify({ user_id: user?.id || "guest", session_id: sessionId }),
       });
+      const payload = await response.json();
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.error || "Bot is in use by someone. Please try after sometime.");
+      }
       setManualResult(null);
       setPreviewImage(null);
+    } catch (error) {
+      setManualResult({
+        success: false,
+        error: error instanceof Error ? error.message : "Bot is in use by someone. Please try after sometime.",
+      });
     } finally {
       setSessionBusy(false);
     }
@@ -1036,7 +1071,11 @@ function DetectionTab({
   const stopLiveDetection = async () => {
     setSessionBusy(true);
     try {
-      await apiFetch(`/api/auto/stop/${mode}`, { method: "POST" });
+      await apiFetch(`/api/auto/stop/${mode}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId }),
+      });
     } finally {
       setSessionBusy(false);
     }
@@ -1068,9 +1107,13 @@ function DetectionTab({
               <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-red-600 dark:bg-red-500/10 dark:text-red-400">
                 Autonomous mode active
               </span>
-            ) : liveSessionRunning ? (
+            ) : showManualStopOnly ? (
               <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
                 Live detection running
+              </span>
+            ) : status?.blocked || (autonomousRunning && !autonomousOwner) ? (
+              <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                Bot in use
               </span>
             ) : null}
           </div>
@@ -1205,6 +1248,7 @@ export default function DetectionPage() {
   const [tab, setTab] = useState<Mode>("animal");
   const [statuses, setStatuses] = useState<AllStatuses | null>(null);
   const [autonomous, setAutonomous] = useState<AutonomousEnvelope["status"] | null>(null);
+  const sessionId = getClientSessionId();
 
   useEffect(() => {
     let active = true;
@@ -1212,8 +1256,8 @@ export default function DetectionPage() {
     const load = async () => {
       try {
         const [statusResponse, autonomousResponse] = await Promise.all([
-          apiFetch("/api/auto/status"),
-          apiFetch("/api/bots/autonomous/status"),
+          apiFetch(`/api/auto/status?session_id=${encodeURIComponent(sessionId)}`),
+          apiFetch(`/api/bots/autonomous/status?session_id=${encodeURIComponent(sessionId)}`),
         ]);
         const statusPayload = await statusResponse.json();
         const autonomousPayload = await autonomousResponse.json();
@@ -1231,7 +1275,7 @@ export default function DetectionPage() {
       active = false;
       window.clearInterval(timer);
     };
-  }, []);
+  }, [sessionId]);
 
   return (
     <div className="min-h-screen bg-gray-50 px-4 py-5 transition-colors duration-200 dark:bg-gray-950 sm:px-6 lg:px-8">
@@ -1296,7 +1340,9 @@ export default function DetectionPage() {
           mode={tab}
           statuses={statuses}
           autonomousRunning={Boolean(autonomous?.running)}
+          autonomousOwner={Boolean(autonomous?.owner)}
           autonomousProfileName={autonomous?.profile_name || null}
+          sessionId={sessionId}
         />
       </div>
     </div>

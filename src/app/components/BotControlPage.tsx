@@ -18,17 +18,17 @@ import {
 } from "lucide-react";
 
 import { apiFetch } from "@/lib/api";
-import { useAuth } from "./AuthContext";
+import { getClientSessionId, useAuth } from "./AuthContext";
 
 const ESP32_HOST = "192.168.4.1";
 const ESP32_WS_URL = `ws://${ESP32_HOST}/CarInput`;
 const AUTONOMOUS_PWM = 150;
 
 const COMMANDS = {
-  F: "MoveCar,1",
-  B: "MoveCar,2",
-  L: "MoveCar,3",
-  R: "MoveCar,4",
+  F: "MoveCar,2",
+  B: "MoveCar,1",
+  L: "MoveCar,4",
+  R: "MoveCar,3",
   S: "MoveCar,0",
   SERVO: "Servo,down",
 } as const;
@@ -314,12 +314,14 @@ function TouchJoystick({
   );
 }
 
-function useEsp32Controller(onToast: (message: string, type: ToastType) => void) {
+function useEsp32Controller(userId: string, onToast: (message: string, type: ToastType) => void) {
   const wsRef = useRef<WebSocket | null>(null);
+  const ownsLockRef = useRef(false);
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [speed, setSpeed] = useState(150);
   const [lastCommand, setLastCommand] = useState<CommandKey>("S");
+  const sessionId = useMemo(() => getClientSessionId(), []);
 
   const logCommand = useCallback(async (payload: Record<string, unknown>) => {
     try {
@@ -339,10 +341,41 @@ function useEsp32Controller(onToast: (message: string, type: ToastType) => void)
     return true;
   }, []);
 
-  const connectBot = useCallback(() => {
+  const releaseBotLock = useCallback(async () => {
+    if (!ownsLockRef.current) return;
+    ownsLockRef.current = false;
+    try {
+      await apiFetch("/api/session/release", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId }),
+      });
+    } catch {
+      // Lock also expires automatically if the tab vanishes.
+    }
+  }, [sessionId]);
+
+  const connectBot = useCallback(async () => {
     if (wsRef.current?.readyState === WebSocket.OPEN || connecting) return;
 
     setConnecting(true);
+    try {
+      const lockResponse = await apiFetch("/api/session/acquire", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lock_type: "bot_control", user_id: userId, session_id: sessionId }),
+      });
+      const lockPayload = await lockResponse.json();
+      if (!lockResponse.ok || !lockPayload.success) {
+        throw new Error(lockPayload.error || "Bot is in use by someone. Please try after sometime.");
+      }
+      ownsLockRef.current = true;
+    } catch (error) {
+      setConnecting(false);
+      onToast(error instanceof Error ? error.message : "Bot is in use by someone. Please try after sometime.", "error");
+      return;
+    }
+
     const socket = new WebSocket(ESP32_WS_URL);
     wsRef.current = socket;
 
@@ -357,14 +390,16 @@ function useEsp32Controller(onToast: (message: string, type: ToastType) => void)
       setConnected(false);
       setConnecting(false);
       setLastCommand("S");
+      void releaseBotLock();
     };
 
     socket.onerror = () => {
       setConnected(false);
       setConnecting(false);
+      void releaseBotLock();
       onToast("Could not connect to ESP32. Join the hotspot first.", "error");
     };
-  }, [connecting, onToast, sendRaw, speed]);
+  }, [connecting, onToast, releaseBotLock, sendRaw, sessionId, speed, userId]);
 
   const disconnectBot = useCallback(() => {
     wsRef.current?.close();
@@ -372,14 +407,30 @@ function useEsp32Controller(onToast: (message: string, type: ToastType) => void)
     setConnected(false);
     setConnecting(false);
     setLastCommand("S");
+    void releaseBotLock();
     onToast("Disconnected from the ESP32 bot controller.", "info");
-  }, [onToast]);
+  }, [onToast, releaseBotLock]);
 
   useEffect(() => {
     return () => {
       wsRef.current?.close();
+      void releaseBotLock();
     };
-  }, []);
+  }, [releaseBotLock]);
+
+  useEffect(() => {
+    if (!connected) return;
+    const heartbeat = () => {
+      void apiFetch("/api/session/heartbeat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId, user_id: userId }),
+      }).catch(() => {});
+    };
+    heartbeat();
+    const timer = window.setInterval(heartbeat, 15000);
+    return () => window.clearInterval(timer);
+  }, [connected, sessionId, userId]);
 
   useEffect(() => {
     if (connected) sendRaw(`Speed,${speed}`);
@@ -433,6 +484,7 @@ function useEsp32Controller(onToast: (message: string, type: ToastType) => void)
     disconnectBot,
     sendCommand,
     sendRaw,
+    sessionId,
   };
 }
 
@@ -736,6 +788,7 @@ function ManualPage({
 
 function TrainingPage({
   userId,
+  sessionId,
   connected,
   connecting,
   lastCommand,
@@ -746,6 +799,7 @@ function TrainingPage({
   onToast,
 }: {
   userId: string;
+  sessionId: string;
   connected: boolean;
   connecting: boolean;
   lastCommand: CommandKey;
@@ -790,7 +844,7 @@ function TrainingPage({
       const response = await apiFetch("/api/bots/training/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId }),
+        body: JSON.stringify({ user_id: userId, session_id: sessionId }),
       });
       const payload = await response.json();
       if (!response.ok || !payload.success) throw new Error(payload.error || "Could not start training");
@@ -801,7 +855,7 @@ function TrainingPage({
     } finally {
       setBusy(false);
     }
-  }, [connected, onToast, sendCommand, sendRaw, userId]);
+  }, [connected, onToast, sendCommand, sendRaw, sessionId, userId]);
 
   const saveTraining = useCallback(async () => {
     if (!profileName.trim()) {
@@ -815,7 +869,7 @@ function TrainingPage({
       const response = await apiFetch("/api/bots/training/stop", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ profile_name: profileName.trim() }),
+        body: JSON.stringify({ profile_name: profileName.trim(), session_id: sessionId }),
       });
       const payload = await response.json();
       if (!response.ok || !payload.success) throw new Error(payload.error || "Could not save the training profile");
@@ -828,7 +882,7 @@ function TrainingPage({
     } finally {
       setBusy(false);
     }
-  }, [onToast, profileName, refreshStatus, sendCommand]);
+  }, [onToast, profileName, refreshStatus, sendCommand, sessionId]);
 
   return (
     <div className="space-y-5">
@@ -950,10 +1004,12 @@ function TrainingPage({
 
 function AutonomousPage({
   userId,
+  sessionId,
   onToast,
   openTrainingPage,
 }: {
   userId: string;
+  sessionId: string;
   onToast: (message: string, type: ToastType) => void;
   openTrainingPage: () => void;
 }) {
@@ -964,12 +1020,16 @@ function AutonomousPage({
   const [snapshotLoading, setSnapshotLoading] = useState(false);
   const cycleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
+  const running = Boolean(status?.running);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
 
   const refreshProfiles = useCallback(async () => {
     try {
-      const response = await apiFetch(`/api/bots/profiles?user_id=${encodeURIComponent(userId)}`, { cache: "no-store" });
+      const response = await apiFetch(
+        `/api/bots/profiles?user_id=${encodeURIComponent(userId)}&session_id=${encodeURIComponent(sessionId)}`,
+        { cache: "no-store" }
+      );
       const payload = await response.json();
       if (!response.ok || !payload.success) return;
       setProfiles(payload.profiles || []);
@@ -977,11 +1037,14 @@ function AutonomousPage({
     } catch {
       // ignore
     }
-  }, [userId]);
+  }, [sessionId, userId]);
 
   const refreshStatus = useCallback(async () => {
     try {
-      const response = await apiFetch("/api/bots/autonomous/status", { cache: "no-store" });
+      const response = await apiFetch(
+        `/api/bots/autonomous/status?session_id=${encodeURIComponent(sessionId)}`,
+        { cache: "no-store" }
+      );
       const payload = await response.json();
       if (!response.ok || !payload.success) return;
       setStatus(payload.status);
@@ -990,7 +1053,7 @@ function AutonomousPage({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [sessionId]);
 
   useEffect(() => {
     void refreshProfiles();
@@ -1004,6 +1067,20 @@ function AutonomousPage({
     return () => window.clearInterval(timer);
   }, [refreshProfiles, refreshStatus]);
 
+  useEffect(() => {
+    if (!running) return;
+    const heartbeat = () => {
+      void apiFetch("/api/session/heartbeat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId, user_id: userId }),
+      }).catch(() => {});
+    };
+    heartbeat();
+    const timer = window.setInterval(heartbeat, 15000);
+    return () => window.clearInterval(timer);
+  }, [running, sessionId, userId]);
+
   const startAutonomous = useCallback(async () => {
     if (!selectedProfileId) {
       onToast("Select a saved training profile before starting autonomous mode.", "info");
@@ -1015,7 +1092,7 @@ function AutonomousPage({
       const response = await apiFetch("/api/bots/autonomous/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ profile_id: selectedProfileId, user_id: userId }),
+        body: JSON.stringify({ profile_id: selectedProfileId, user_id: userId, session_id: sessionId }),
       });
       const payload = await response.json();
       if (!response.ok || !payload.success) throw new Error(payload.error || "Could not start autonomous mode");
@@ -1026,7 +1103,7 @@ function AutonomousPage({
     } finally {
       setWorking(false);
     }
-  }, [onToast, selectedProfileId, userId]);
+  }, [onToast, selectedProfileId, sessionId, userId]);
 
   const stopAutonomous = useCallback(async () => {
     setWorking(true);
@@ -1034,6 +1111,7 @@ function AutonomousPage({
       const response = await apiFetch("/api/bots/autonomous/stop", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId }),
       });
       const payload = await response.json();
       if (!response.ok || !payload.success) throw new Error(payload.error || "Could not stop autonomous mode");
@@ -1044,10 +1122,9 @@ function AutonomousPage({
     } finally {
       setWorking(false);
     }
-  }, [onToast]);
+  }, [onToast, sessionId]);
 
   const selectedProfile = profiles.find((item) => item.id === selectedProfileId) || null;
-  const running = Boolean(status?.running);
   const progressPercent = Math.round((status?.progress_ratio ?? 0) * 100);
 
   useEffect(() => {
@@ -1078,7 +1155,10 @@ function AutonomousPage({
       if (!mountedRef.current || !running) return;
       setSnapshotLoading(true);
       try {
-        const res = await apiFetch(`/api/auto/snapshot?t=${Date.now()}`, { cache: "no-store" });
+        const res = await apiFetch(
+          `/api/auto/snapshot?session_id=${encodeURIComponent(sessionId)}&t=${Date.now()}`,
+          { cache: "no-store" }
+        );
         if (!mountedRef.current) return;
         if (res.ok) {
           const blob = await res.blob();
@@ -1103,7 +1183,7 @@ function AutonomousPage({
     };
 
     void fetchPhoto();
-  }, [running]);
+  }, [running, sessionId]);
 
   return (
     <div className="space-y-5">
@@ -1340,7 +1420,7 @@ export default function BotControlPage() {
     toastTimer.current = window.setTimeout(() => setToast(null), 2800);
   }, []);
 
-  const controller = useEsp32Controller(showToast);
+  const controller = useEsp32Controller(userId, showToast);
 
   useEffect(() => {
     return () => {
@@ -1399,6 +1479,7 @@ export default function BotControlPage() {
         ) : tab === "training" ? (
           <TrainingPage
             userId={userId}
+            sessionId={controller.sessionId}
             connected={controller.connected}
             connecting={controller.connecting}
             lastCommand={controller.lastCommand}
@@ -1409,7 +1490,12 @@ export default function BotControlPage() {
             onToast={showToast}
           />
         ) : (
-          <AutonomousPage userId={userId} onToast={showToast} openTrainingPage={() => setTab("training")} />
+          <AutonomousPage
+            userId={userId}
+            sessionId={controller.sessionId}
+            onToast={showToast}
+            openTrainingPage={() => setTab("training")}
+          />
         )}
       </div>
     </div>

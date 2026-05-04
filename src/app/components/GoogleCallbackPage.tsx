@@ -3,7 +3,7 @@
 import { Suspense, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
-import { useAuth, getGuestHistory, clearGuestHistory } from "../components/AuthContext";
+import { useAuth, getGuestHistory, clearGuestHistory, getClientSessionId } from "../components/AuthContext";
 import { apiFetch } from "@/lib/api";
 
 // This page handles the Google OAuth callback
@@ -37,6 +37,7 @@ function GoogleCallbackContent() {
             google_id: data.user.sub || data.user.email,
             picture:   data.user.image || "",
             guest_history: guestHistory,
+            client_session_id: getClientSessionId(),
           }),
         });
 

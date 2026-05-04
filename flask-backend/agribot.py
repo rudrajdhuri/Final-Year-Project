@@ -65,7 +65,9 @@ import os
 from dotenv import load_dotenv
 from database import mongo
 from services.esp32_bridge import start_sensor_bridge
-from services.live_detection_service import bind_live_detection_app
+from services.live_detection_service import bind_live_detection_app, stop_all_for_lock_release as stop_live_detection_for_lock_release
+from services.autonomous_service import stop_all_for_lock_release as stop_autonomous_for_lock_release
+from services.session_lock_service import register_expire_callback
 
 load_dotenv()
 
@@ -87,6 +89,8 @@ def create_app():
 
     mongo.init_app(app)
     bind_live_detection_app(app)
+    register_expire_callback(stop_live_detection_for_lock_release)
+    register_expire_callback(stop_autonomous_for_lock_release)
 
     from routes.weather_news import weather_news_bp
     from routes.agriculture_news import agriculture_bp
@@ -100,6 +104,7 @@ def create_app():
     from routes.auth_routes import auth_bp
     from routes.ai_assistant import ai_assistant_bp
     from routes.notifications_routes import notifications_bp
+    from routes.session_lock_routes import session_lock_bp
 
     app.register_blueprint(soil_readings_bp,    url_prefix="/api/soil")
     app.register_blueprint(system_info_bp,      url_prefix="/api/system")
@@ -113,6 +118,7 @@ def create_app():
     app.register_blueprint(auto_detection_bp,   url_prefix="/api/auto")
     app.register_blueprint(auth_bp,             url_prefix="/api/auth")
     app.register_blueprint(ai_assistant_bp,     url_prefix="/api/ai")
+    app.register_blueprint(session_lock_bp,      url_prefix="/api")
 
     @app.route("/")
     def home():
