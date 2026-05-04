@@ -105,6 +105,7 @@ def create_app():
     from routes.ai_assistant import ai_assistant_bp
     from routes.notifications_routes import notifications_bp
     from routes.session_lock_routes import session_lock_bp
+    from routes.power_routes import power_bp
 
     app.register_blueprint(soil_readings_bp,    url_prefix="/api/soil")
     app.register_blueprint(system_info_bp,      url_prefix="/api/system")
@@ -119,6 +120,7 @@ def create_app():
     app.register_blueprint(auth_bp,             url_prefix="/api/auth")
     app.register_blueprint(ai_assistant_bp,     url_prefix="/api/ai")
     app.register_blueprint(session_lock_bp,      url_prefix="/api")
+    app.register_blueprint(power_bp,             url_prefix="/api/power")
 
     @app.route("/")
     def home():
