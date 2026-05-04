@@ -1,4 +1,3 @@
-from datetime import datetime, timezone
 import base64
 import os
 import uuid
@@ -9,6 +8,7 @@ from flask import Blueprint, jsonify, request, send_from_directory
 
 from database import COLLECTIONS, get_collection, limit_collection
 from services.camera_service import capture_single_frame
+from services.time_service import iso_ist, now_ist
 
 
 animal_detection_bp = Blueprint("animal_detection", __name__)
@@ -75,7 +75,7 @@ def _save_and_cleanup(user_id, threat, animal_name, confidence, result_text, fil
             "filename": filename,
             "message": result_text,
             "image_b64": image_b64,
-            "timestamp": datetime.now(timezone.utc),
+            "timestamp": now_ist(),
         }
     )
     limit_collection(COLLECTIONS["ANIMALS"])
@@ -156,7 +156,7 @@ def animal_history():
         records = list(animal_col.find({"user_id": user_id}).sort("timestamp", -1).limit(15))
         for row in records:
             row["_id"] = str(row["_id"])
-            row["timestamp"] = row["timestamp"].isoformat()
+            row["timestamp"] = iso_ist(row.get("timestamp"))
         return jsonify({"success": True, "data": records})
     except Exception as exc:
         return jsonify({"success": False, "error": str(exc)}), 500

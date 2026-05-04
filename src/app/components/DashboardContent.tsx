@@ -38,7 +38,14 @@ export default function DashboardContent() {
 
         if (!active) return;
         setBotData(nextBot);
-        setLastUpdated(new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+        setLastUpdated(
+          new Date().toLocaleTimeString('en-IN', {
+            timeZone: 'Asia/Kolkata',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+          })
+        );
       } catch (err: any) {
         if (!active) return;
         setError(err.message || 'Unable to fetch dashboard data');

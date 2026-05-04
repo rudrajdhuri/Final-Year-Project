@@ -1,7 +1,9 @@
 import threading
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any
+
+from services.time_service import iso_ist, now_ist
 
 
 LOCK_TIMEOUT_SECONDS = 35
@@ -21,13 +23,11 @@ _expire_callbacks = []
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return now_ist()
 
 
 def _iso(value: datetime | None) -> str | None:
-    if not value:
-        return None
-    return value.astimezone(timezone.utc).isoformat()
+    return iso_ist(value)
 
 
 def _expired(current_time: datetime) -> bool:

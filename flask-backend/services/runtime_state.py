@@ -1,8 +1,9 @@
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
+from services.time_service import iso_ist, now_ist
 
 _lock = threading.Lock()
 
@@ -16,7 +17,7 @@ _state: dict[str, Any] = {
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return now_ist()
 
 
 def set_manual_direction(direction: str):
@@ -60,7 +61,7 @@ def get_runtime_state() -> dict[str, Any]:
             "autonomous_running": _state["autonomous_running"],
             "autonomous_direction": _state["autonomous_direction"],
             "arm_active": time.time() < _state["arm_active_until"],
-            "arm_last_triggered_at": _state["arm_last_triggered_at"].isoformat()
+            "arm_last_triggered_at": iso_ist(_state["arm_last_triggered_at"])
             if _state["arm_last_triggered_at"]
             else None,
             "bot_running": (

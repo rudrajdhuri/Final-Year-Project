@@ -3,21 +3,23 @@ import os
 import threading
 import time
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any
 
 import cv2
 from flask import Response
 
 from database import COLLECTIONS, get_collection, limit_collection
+from services.buzzer_service import buzz
 from services.session_lock_service import is_lock_owner
+from services.time_service import iso_ist, now_ist
 
 
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 SESSION_DURATION_SECONDS = 10 * 60
-FRAME_SKIP = 5
+FRAME_SKIP = 7
 CAPTURE_INTERVAL_SECONDS = 0.2
 SAVE_COOLDOWN_SECONDS = 8
 STREAM_BOUNDARY = b"--frame"
@@ -73,13 +75,11 @@ def bind_live_detection_app(app):
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return now_ist()
 
 
 def _iso(value: datetime | None) -> str | None:
-    if not value:
-        return None
-    return value.astimezone(timezone.utc).isoformat()
+    return iso_ist(value)
 
 
 def _shared_active() -> bool:
@@ -417,6 +417,8 @@ def _run_worker():
                         annotations.append(("Plant disease", parsed["message"], (0, 145, 255)))
 
                     saved = _save_detection(mode, parsed, annotated, current_time)
+                    if mode == "animal" and _states[mode].get("owner_session_id"):
+                        buzz(2)
                     with _lock:
                         _states[mode]["last_detection"] = saved
                         _states[mode]["last_saved_at"] = current_time

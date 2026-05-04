@@ -75,6 +75,12 @@ type AutonomousStatus = {
   obstacle: boolean;
 };
 
+type LockStatus = {
+  locked: boolean;
+  owner: boolean;
+  lock_type: string | null;
+};
+
 function formatDuration(ms: number) {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
   const minutes = Math.floor(totalSeconds / 60);
@@ -488,14 +494,42 @@ function useEsp32Controller(userId: string, onToast: (message: string, type: Toa
   };
 }
 
+function SampleStepProgress({
+  elapsedMs,
+  totalMs,
+}: {
+  elapsedMs: number;
+  totalMs: number;
+}) {
+  const safeTotal = Math.max(1, totalMs);
+  const safeElapsed = Math.min(Math.max(0, elapsedMs), safeTotal);
+  const stepCount = Math.max(1, Math.ceil(safeTotal / 30000));
+  const currentStep = Math.min(stepCount, Math.floor(safeElapsed / 30000) + 1);
+  const percent = Math.min(100, (safeElapsed / safeTotal) * 100);
+
+  return (
+    <div className="mt-5 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/60">
+      <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+        <span>30 sec samples</span>
+        <span>{currentStep} / {stepCount}</span>
+      </div>
+      <div className="h-2.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-800">
+        <div className="h-full rounded-full bg-emerald-500 transition-all duration-500" style={{ width: `${percent}%` }} />
+      </div>
+    </div>
+  );
+}
+
 function ConnectionCard({
   connected,
   connecting,
+  lockedByOther,
   onConnect,
   onDisconnect,
 }: {
   connected: boolean;
   connecting: boolean;
+  lockedByOther: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
 }) {
@@ -527,16 +561,21 @@ function ConnectionCard({
 
         <button
           onClick={connected ? onDisconnect : onConnect}
-          disabled={connecting}
+          disabled={connecting || (!connected && lockedByOther)}
           className={`w-full rounded-2xl px-5 py-3 text-sm font-semibold transition-all disabled:opacity-60 sm:w-auto ${
             connected
               ? "border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400 dark:hover:bg-red-500/20"
               : "bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 hover:bg-emerald-600"
           }`}
         >
-          {connecting ? "Connecting..." : connected ? "Disconnect" : "Connect Bot"}
+          {lockedByOther && !connected ? "Bot In Use" : connecting ? "Connecting..." : connected ? "Disconnect" : "Connect Bot"}
         </button>
       </div>
+      {lockedByOther && !connected ? (
+        <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 dark:border-amber-500/20 dark:bg-amber-950/20 dark:text-amber-200">
+          Bot is in use by someone. Please try after sometime.
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -713,6 +752,7 @@ function ControlSurface({
 function ManualPage({
   connected,
   connecting,
+  lockedByOther,
   speed,
   setSpeed,
   lastCommand,
@@ -722,6 +762,7 @@ function ManualPage({
 }: {
   connected: boolean;
   connecting: boolean;
+  lockedByOther: boolean;
   speed: number;
   setSpeed: (value: number) => void;
   lastCommand: CommandKey;
@@ -770,6 +811,7 @@ function ManualPage({
       <ConnectionCard
         connected={connected}
         connecting={connecting}
+        lockedByOther={lockedByOther}
         onConnect={connectBot}
         onDisconnect={disconnectBot}
       />
@@ -789,6 +831,7 @@ function ManualPage({
 function TrainingPage({
   userId,
   sessionId,
+  lockedByOther,
   connected,
   connecting,
   lastCommand,
@@ -800,6 +843,7 @@ function TrainingPage({
 }: {
   userId: string;
   sessionId: string;
+  lockedByOther: boolean;
   connected: boolean;
   connecting: boolean;
   lastCommand: CommandKey;
@@ -889,6 +933,7 @@ function TrainingPage({
       <ConnectionCard
         connected={connected}
         connecting={connecting}
+        lockedByOther={lockedByOther}
         onConnect={connectBot}
         onDisconnect={disconnectBot}
       />
@@ -941,21 +986,21 @@ function TrainingPage({
               <div className="grid gap-3 sm:grid-cols-3">
                 <button
                   onClick={() => void startTraining()}
-                  disabled={!connected || busy || Boolean(trainingStatus?.active)}
+                  disabled={lockedByOther || !connected || busy || Boolean(trainingStatus?.active)}
                   className="rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-600 disabled:opacity-50"
                 >
                   {busy && !trainingStatus?.active ? "Starting..." : "Start Training"}
                 </button>
                 <button
                   onClick={() => void sendCommand("S", true)}
-                  disabled={!connected}
+                  disabled={lockedByOther || !connected}
                   className="rounded-2xl border border-red-200 bg-red-50 px-5 py-3 text-sm font-semibold text-red-600 transition hover:bg-red-100 disabled:opacity-50 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400 dark:hover:bg-red-500/20"
                 >
                   Stop Training
                 </button>
                 <button
                   onClick={() => void saveTraining()}
-                  disabled={!connected || busy || !trainingStatus?.active}
+                  disabled={lockedByOther || !connected || busy || !trainingStatus?.active}
                   className="rounded-2xl border border-emerald-200 bg-white px-5 py-3 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-50 dark:border-emerald-500/20 dark:bg-gray-900 dark:text-emerald-300 dark:hover:bg-emerald-950/20"
                 >
                   Save Profile
@@ -1005,11 +1050,13 @@ function TrainingPage({
 function AutonomousPage({
   userId,
   sessionId,
+  lockedByOther,
   onToast,
   openTrainingPage,
 }: {
   userId: string;
   sessionId: string;
+  lockedByOther: boolean;
   onToast: (message: string, type: ToastType) => void;
   openTrainingPage: () => void;
 }) {
@@ -1169,20 +1216,20 @@ function AutonomousPage({
             return url;
           });
           setSnapshotLoading(false);
-          cycleTimerRef.current = setTimeout(() => {
-            if (!mountedRef.current) return;
-            setSnapshotLoading(true);
-            cycleTimerRef.current = setTimeout(() => void fetchPhoto(), 1500);
-          }, 500);
-          return;
         }
       } catch {
         if (!mountedRef.current) return;
+      } finally {
+        if (!mountedRef.current || !running) return;
+        setSnapshotLoading(false);
+        cycleTimerRef.current = setTimeout(() => void fetchPhoto(), 30000);
       }
-      cycleTimerRef.current = setTimeout(() => void fetchPhoto(), 2000);
     };
 
     void fetchPhoto();
+    return () => {
+      if (cycleTimerRef.current) clearTimeout(cycleTimerRef.current);
+    };
   }, [running, sessionId]);
 
   return (
@@ -1225,7 +1272,7 @@ function AutonomousPage({
             <select
               value={selectedProfileId}
               onChange={(event) => setSelectedProfileId(event.target.value)}
-              disabled={running || profiles.length === 0}
+              disabled={lockedByOther || running || profiles.length === 0}
               className="mt-3 w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-emerald-400 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
             >
               <option value="">{profiles.length ? "Select a saved profile" : "No saved profile yet"}</option>
@@ -1239,7 +1286,8 @@ function AutonomousPage({
             <div className="mt-4 flex flex-wrap gap-3">
               <button
                 onClick={openTrainingPage}
-                className="rounded-2xl border border-gray-200 bg-gray-100 px-5 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                disabled={lockedByOther}
+                className="rounded-2xl border border-gray-200 bg-gray-100 px-5 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-200 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
               >
                 Go To Manual Training
               </button>
@@ -1268,10 +1316,16 @@ function AutonomousPage({
               </div>
             ) : null}
 
+            {lockedByOther ? (
+              <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 dark:border-amber-500/20 dark:bg-amber-950/20 dark:text-amber-200">
+                Bot is in use by someone. Please try after sometime.
+              </div>
+            ) : null}
+
             <div className="mt-5 flex flex-wrap gap-3">
               <button
                 onClick={() => void startAutonomous()}
-                disabled={working || running || !selectedProfileId}
+                disabled={lockedByOther || working || running || !selectedProfileId}
                 className="flex min-h-14 flex-1 items-center justify-center gap-2 rounded-3xl bg-emerald-500 px-6 py-4 text-base font-semibold text-white shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-600 disabled:opacity-50"
               >
                 {working && !running ? <Loader2 className="h-5 w-5 animate-spin" /> : <PlayCircle className="h-5 w-5" />}
@@ -1279,7 +1333,7 @@ function AutonomousPage({
               </button>
               <button
                 onClick={() => void stopAutonomous()}
-                disabled={working || !running}
+                disabled={lockedByOther || working || !running}
                 className="flex min-h-14 flex-1 items-center justify-center gap-2 rounded-3xl bg-red-500 px-6 py-4 text-base font-semibold text-white shadow-lg shadow-red-500/20 transition hover:bg-red-600 disabled:opacity-50"
               >
                 {working && running ? <Loader2 className="h-5 w-5 animate-spin" /> : <PauseCircle className="h-5 w-5" />}
@@ -1292,30 +1346,43 @@ function AutonomousPage({
           <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
             <div className="mb-4 flex items-center gap-2">
               <Camera className="h-5 w-5 text-gray-400 dark:text-gray-500" />
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Live Autonomous View</h3>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Autonomous Model Samples</h3>
             </div>
-            <div className="overflow-hidden rounded-3xl border border-gray-200 bg-gray-950 dark:border-gray-800">
-              {snapshotPhoto ? (
-                <img
-                  src={snapshotPhoto}
-                  alt="Latest autonomous Pi camera snapshot"
-                  className="aspect-[16/9] max-h-[23rem] w-full object-cover"
-                />
-              ) : snapshotLoading ? (
-                <div className="flex aspect-[16/9] max-h-[23rem] flex-col items-center justify-center bg-gray-200 text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-                  <Loader2 className="mb-3 h-10 w-10 animate-spin" />
-                  <span className="text-sm font-medium">Loading autonomous snapshot...</span>
+            <div className="grid gap-4 lg:grid-cols-2">
+              {["Animal model", "Plant model"].map((label) => (
+                <div key={label} className="overflow-hidden rounded-3xl border border-gray-200 bg-gray-950 dark:border-gray-800">
+                  <div className="border-b border-gray-800 px-4 py-2 text-sm font-semibold text-gray-100">
+                    {label}
+                  </div>
+                  {snapshotPhoto ? (
+                    <img
+                      src={snapshotPhoto}
+                      alt={`${label} autonomous sample`}
+                      className="aspect-video w-full object-cover"
+                    />
+                  ) : snapshotLoading ? (
+                    <div className="flex aspect-video flex-col items-center justify-center bg-gray-200 text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                      <Loader2 className="mb-3 h-10 w-10 animate-spin" />
+                      <span className="text-sm font-medium">Loading next 30 sec sample...</span>
+                    </div>
+                  ) : running ? (
+                    <div className="flex aspect-video items-center justify-center text-sm text-gray-400">
+                      Waiting for the first 30 sec sample...
+                    </div>
+                  ) : (
+                    <div className="flex aspect-video items-center justify-center text-sm text-gray-400">
+                      Samples appear after autonomous mode starts.
+                    </div>
+                  )}
                 </div>
-              ) : running ? (
-                <div className="flex aspect-[16/9] max-h-[23rem] items-center justify-center text-sm text-gray-400">
-                  Waiting for the first autonomous snapshot...
-                </div>
-              ) : (
-                <div className="flex aspect-[16/9] max-h-[23rem] items-center justify-center text-sm text-gray-400">
-                  Autonomous view appears only after a profile is selected and autonomous mode starts.
-                </div>
-              )}
+              ))}
             </div>
+            {running ? (
+              <SampleStepProgress
+                elapsedMs={status?.progress_ms ?? 0}
+                totalMs={status?.total_duration_ms ?? selectedProfile?.total_duration_ms ?? 1}
+              />
+            ) : null}
           </div>
 
           <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
@@ -1412,6 +1479,7 @@ export default function BotControlPage() {
   const userId = user?.id || "guest";
   const [tab, setTab] = useState<PageTab>("manual");
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
+  const [lockStatus, setLockStatus] = useState<LockStatus | null>(null);
   const toastTimer = useRef<number | null>(null);
 
   const showToast = useCallback((message: string, type: ToastType) => {
@@ -1421,6 +1489,26 @@ export default function BotControlPage() {
   }, []);
 
   const controller = useEsp32Controller(userId, showToast);
+  const lockedByOther = Boolean(lockStatus?.locked && !lockStatus.owner);
+
+  const refreshLockStatus = useCallback(async () => {
+    try {
+      const response = await apiFetch(
+        `/api/session/status?session_id=${encodeURIComponent(controller.sessionId)}`,
+        { cache: "no-store" }
+      );
+      const payload = await response.json();
+      if (response.ok && payload.success) setLockStatus(payload.status);
+    } catch {
+      // keep current UI state if status polling misses once
+    }
+  }, [controller.sessionId]);
+
+  useEffect(() => {
+    void refreshLockStatus();
+    const timer = window.setInterval(refreshLockStatus, 1500);
+    return () => window.clearInterval(timer);
+  }, [refreshLockStatus]);
 
   useEffect(() => {
     return () => {
@@ -1469,6 +1557,7 @@ export default function BotControlPage() {
           <ManualPage
             connected={controller.connected}
             connecting={controller.connecting}
+            lockedByOther={lockedByOther}
             speed={controller.speed}
             setSpeed={controller.setSpeed}
             lastCommand={controller.lastCommand}
@@ -1480,6 +1569,7 @@ export default function BotControlPage() {
           <TrainingPage
             userId={userId}
             sessionId={controller.sessionId}
+            lockedByOther={lockedByOther}
             connected={controller.connected}
             connecting={controller.connecting}
             lastCommand={controller.lastCommand}
@@ -1493,6 +1583,7 @@ export default function BotControlPage() {
           <AutonomousPage
             userId={userId}
             sessionId={controller.sessionId}
+            lockedByOther={lockedByOther}
             onToast={showToast}
             openTrainingPage={() => setTab("training")}
           />

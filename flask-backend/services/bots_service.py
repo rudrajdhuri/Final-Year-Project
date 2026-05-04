@@ -1,9 +1,8 @@
-from datetime import datetime, timezone
-
 from database import COLLECTIONS, get_collection, limit_collection
 from services.autonomous_service import record_manual_command
 from services.esp32_bridge import get_sensor_history, get_sensor_snapshot
 from services.runtime_state import get_runtime_state, set_manual_direction, trigger_arm
+from services.time_service import now_ist
 
 BOTS = [
     {
@@ -85,7 +84,7 @@ def get_bot_by_id(bot_id):
 
 
 def add_bot(data):
-    data["timestamp"] = datetime.now(timezone.utc)
+    data["timestamp"] = now_ist()
 
     try:
         actuator_col = get_collection(COLLECTIONS["ACTUATORS"])
@@ -112,7 +111,7 @@ def update_bot(bot_id, data):
             {
                 "bot_id": bot_id,
                 "update": data,
-                "timestamp": datetime.now(timezone.utc),
+                "timestamp": now_ist(),
             }
         )
         limit_collection(COLLECTIONS["ACTUATORS"], 10)
@@ -129,7 +128,7 @@ def log_bot_command(command):
         "direction": command.get("direction"),
         "direction_label": command.get("direction_label"),
         "raw": command.get("raw"),
-        "timestamp": datetime.now(timezone.utc),
+        "timestamp": now_ist(),
     }
     if "message" in command:
         payload["message"] = command["message"]

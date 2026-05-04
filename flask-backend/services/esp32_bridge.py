@@ -2,7 +2,7 @@
 # import json
 # import os
 # import threading
-# from datetime import datetime, timezone
+# from datetime import datetime
 # from typing import Any
 
 # from websockets.client import connect
@@ -44,7 +44,7 @@
 # def _iso_timestamp(value: datetime | None) -> str | None:
 #     if not value:
 #         return None
-#     return value.astimezone(timezone.utc).isoformat()
+#     return iso_ist(value)
 
 
 # def _normalize(payload: dict[str, Any]) -> dict[str, Any]:
@@ -54,7 +54,7 @@
 #         "humidity": round(float(payload.get("humidity", 0.0)), 1) if payload.get("humidity") is not None else None,
 #         "ph": None,
 #         "obstacle": bool(payload.get("obstacle", False)),
-#         "timestamp": datetime.now(timezone.utc),
+#         "timestamp": now_ist(),
 #     }
 
 
@@ -67,7 +67,7 @@
 #         document = {
 #             "type": event_type,
 #             "message": message,
-#             "timestamp": datetime.now(timezone.utc),
+#             "timestamp": now_ist(),
 #         }
 #         if extra:
 #             document.update(extra)
@@ -202,13 +202,14 @@ import asyncio
 import json
 import os
 import threading
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from websockets.client import connect
 
 from database import COLLECTIONS, get_collection, limit_collection
 from services.runtime_state import get_runtime_state, is_arm_active, is_bot_running
+from services.time_service import iso_ist, now_ist
 
 
 ESP32_SENSOR_WS_URL = os.getenv("ESP32_SENSOR_WS_URL", "ws://192.168.4.1/SensorData")
@@ -242,9 +243,7 @@ _sensor_state: dict[str, Any] = {
 
 
 def _iso_timestamp(value: datetime | None) -> str | None:
-    if not value:
-        return None
-    return value.astimezone(timezone.utc).isoformat()
+    return iso_ist(value)
 
 
 def _normalize(payload: dict[str, Any]) -> dict[str, Any]:
@@ -254,7 +253,7 @@ def _normalize(payload: dict[str, Any]) -> dict[str, Any]:
         "humidity": round(float(payload.get("humidity", 0.0)), 1) if payload.get("humidity") is not None else None,
         "ph": None,
         "obstacle": bool(payload.get("obstacle", False)),
-        "timestamp": datetime.now(timezone.utc),
+        "timestamp": now_ist(),
     }
 
 
@@ -267,7 +266,7 @@ def _record_actuator_event(event_type: str, message: str, extra: dict[str, Any] 
         document = {
             "type": event_type,
             "message": message,
-            "timestamp": datetime.now(timezone.utc),
+            "timestamp": now_ist(),
         }
         if extra:
             document.update(extra)

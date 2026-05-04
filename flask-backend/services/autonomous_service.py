@@ -1,6 +1,6 @@
 # import threading
 # import time
-# from datetime import datetime, timezone
+# from datetime import datetime
 # from typing import Any
 
 # from bson import ObjectId
@@ -116,13 +116,13 @@
 
 
 # def _now() -> datetime:
-#     return datetime.now(timezone.utc)
+#     return now_ist()
 
 
 # def _iso(value: datetime | None) -> str | None:
 #     if not value:
 #         return None
-#     return value.astimezone(timezone.utc).isoformat()
+#     return iso_ist(value)
 
 
 # def _duration_ms(start: datetime, end: datetime) -> int:
@@ -602,7 +602,7 @@
 
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from bson import ObjectId
@@ -611,6 +611,7 @@ from database import COLLECTIONS, get_collection, limit_collection
 from services.esp32_bridge import get_sensor_snapshot
 from services.live_detection_service import start_detection, stop_detection
 from services.runtime_state import clear_arm, set_autonomous_motion, trigger_arm
+from services.time_service import iso_ist, now_ist
 
 try:
     from websockets.sync.client import connect as ws_connect
@@ -719,13 +720,11 @@ _autonomous_state: dict[str, Any] = {
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return now_ist()
 
 
 def _iso(value: datetime | None) -> str | None:
-    if not value:
-        return None
-    return value.astimezone(timezone.utc).isoformat()
+    return iso_ist(value)
 
 
 def _duration_ms(start: datetime, end: datetime) -> int:

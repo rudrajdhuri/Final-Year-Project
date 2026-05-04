@@ -1,13 +1,14 @@
 from datetime import datetime
 
 from database import COLLECTIONS, get_collection
+from services.time_service import iso_ist
 
 
 def _format_timestamp(value):
     if not value:
         return None
     if isinstance(value, datetime):
-        return value.isoformat()
+        return iso_ist(value)
     return str(value)
 
 

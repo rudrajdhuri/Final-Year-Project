@@ -2,11 +2,11 @@ from flask import Blueprint, request, jsonify
 import bcrypt
 import hashlib
 import dns.resolver
-from datetime import datetime, timezone
 from database import COLLECTIONS, get_collection, limit_collection
 from services.autonomous_service import update_owner_user_id as update_autonomous_owner_user_id
 from services.live_detection_service import update_owner_user_id as update_detection_owner_user_id
 from services.session_lock_service import transfer_owner_session
+from services.time_service import from_epoch_ms_ist, now_ist
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -67,7 +67,7 @@ def signup():
             "email":         email,
             "password":      hashed,
             "auth_provider": "manual",
-            "created_at":    datetime.now(timezone.utc)
+            "created_at":    now_ist()
         })
 
         user_id = str(result.inserted_id)
@@ -183,7 +183,7 @@ def google_auth():
             "auth_provider": "google",
             "google_id":     google_id,
             "picture":       picture,
-            "created_at":    datetime.now(timezone.utc)
+            "created_at":    now_ist()
         })
 
         user_id = str(result.inserted_id)
@@ -233,7 +233,7 @@ def _migrate_guest_history(user_id: str, guest_records: list):
 
     for rec in guest_records:
         mode = rec.get('mode')
-        ts   = datetime.fromtimestamp(rec['timestamp'] / 1000, tz=timezone.utc) if rec.get('timestamp') else datetime.now(timezone.utc)
+        ts = from_epoch_ms_ist(rec.get("timestamp"))
 
         if mode == 'animal':
             animal_col.insert_one({
@@ -276,7 +276,7 @@ def _migrate_guest_runtime(user_id: str, client_session_id: str | None):
     if not client_session_id:
         return
 
-    now = datetime.now(timezone.utc)
+    now = now_ist()
     profiles_col = get_collection(COLLECTIONS["PROFILES"])
     profiles_col.update_many(
         {"user_id": "guest", "owner_session_id": client_session_id},

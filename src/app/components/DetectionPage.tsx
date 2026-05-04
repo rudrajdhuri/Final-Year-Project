@@ -684,9 +684,17 @@ type AutonomousEnvelope = {
   status: {
     running: boolean;
     profile_name: string | null;
+    progress_ms?: number;
+    total_duration_ms?: number;
     owner?: boolean;
     blocked?: boolean;
   };
+};
+
+type SampleState = {
+  url: string | null;
+  version: number;
+  loading: boolean;
 };
 
 function formatRemaining(seconds: number) {
@@ -777,23 +785,24 @@ function ResultCard({ result, mode }: { result: any; mode: Mode }) {
 // ─── Shared photo-based snapshot display ─────────────────────────────────────
 // Polls /api/auto/snapshot every 2s. Shows loader in the gap between photos.
 // No MJPEG stream is consumed — keeps Pi cool.
-function useSnapshotCycle(active: boolean, sessionId: string) {
+function useSnapshotSampler(active: boolean, sessionId: string) {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [version, setVersion] = useState(0);
   const [showLoader, setShowLoader] = useState(false);
-  const cycleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
 
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      if (cycleRef.current) clearTimeout(cycleRef.current);
+      if (intervalRef.current) clearInterval(intervalRef.current);
       setPhotoUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
     };
   }, []);
 
   useEffect(() => {
-    if (cycleRef.current) clearTimeout(cycleRef.current);
+    if (intervalRef.current) clearInterval(intervalRef.current);
 
     if (!active) {
       setPhotoUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
@@ -817,29 +826,52 @@ function useSnapshotCycle(active: boolean, sessionId: string) {
           if (!mountedRef.current) return;
           const url = URL.createObjectURL(blob);
           setPhotoUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return url; });
+          setVersion((current) => current + 1);
           setShowLoader(false);
-          // show photo for 500ms then loader for 1500ms then fetch again
-          cycleRef.current = setTimeout(() => {
-            if (!mountedRef.current) return;
-            setShowLoader(true);
-            cycleRef.current = setTimeout(() => {
-              void fetchPhoto();
-            }, 1500);
-          }, 500);
-          return;
         }
       } catch {
         if (!mountedRef.current) return;
+      } finally {
+        if (mountedRef.current) setShowLoader(false);
       }
-
-      // retry after 2s on error
-      cycleRef.current = setTimeout(() => void fetchPhoto(), 2000);
     };
 
     void fetchPhoto();
+    intervalRef.current = setInterval(() => void fetchPhoto(), 30000);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
   }, [active, sessionId]);
 
-  return { photoUrl, showLoader };
+  return { photoUrl, version, showLoader };
+}
+
+function StepProgress({
+  active,
+  elapsedSeconds,
+  totalSeconds,
+}: {
+  active: boolean;
+  elapsedSeconds: number;
+  totalSeconds: number;
+}) {
+  const safeTotal = Math.max(1, totalSeconds);
+  const safeElapsed = Math.min(Math.max(0, elapsedSeconds), safeTotal);
+  const stepCount = Math.max(1, Math.ceil(safeTotal / 30));
+  const currentStep = active ? Math.min(stepCount, Math.floor(safeElapsed / 30) + 1) : 0;
+  const percent = Math.min(100, (safeElapsed / safeTotal) * 100);
+
+  return (
+    <div className="mt-5 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/60">
+      <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+        <span>30 sec samples</span>
+        <span>{currentStep} / {stepCount}</span>
+      </div>
+      <div className="h-2.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-800">
+        <div className="h-full rounded-full bg-emerald-500 transition-all duration-500" style={{ width: `${percent}%` }} />
+      </div>
+    </div>
+  );
 }
 
 function SnapshotBox({
@@ -848,19 +880,21 @@ function SnapshotBox({
   showLoader,
   idleMessage,
   uploadedImage,
+  highlight = false,
 }: {
   active: boolean;
   photoUrl: string | null;
   showLoader: boolean;
   idleMessage: string;
   uploadedImage?: string | null;
+  highlight?: boolean;
 }) {
   if (active && photoUrl) {
     return (
       <img
         src={photoUrl}
         alt="Latest Pi camera snapshot"
-        className="aspect-video w-full object-cover"
+        className={`aspect-video w-full object-cover ${highlight ? "ring-4 ring-red-500" : ""}`}
       />
     );
   }
@@ -881,7 +915,7 @@ function SnapshotBox({
       <img
         src={uploadedImage}
         alt="Selected detection preview"
-        className="aspect-video w-full object-contain bg-black/90"
+        className={`aspect-video w-full object-contain bg-black/90 ${highlight ? "ring-4 ring-red-500" : ""}`}
       />
     );
   }
@@ -904,6 +938,8 @@ function DetectionTab({
   autonomousOwner,
   autonomousProfileName,
   sessionId,
+  sharedSample,
+  autonomousStatus,
 }: {
   mode: Mode;
   statuses: AllStatuses | null;
@@ -911,6 +947,8 @@ function DetectionTab({
   autonomousOwner: boolean;
   autonomousProfileName: string | null;
   sessionId: string;
+  sharedSample: SampleState;
+  autonomousStatus: AutonomousEnvelope["status"] | null;
 }) {
   const { user, isGuest } = useAuth();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -921,16 +959,17 @@ function DetectionTab({
   const liveSessionRunning = Boolean(status?.running);
   const ownedLiveSessionRunning = liveSessionRunning && Boolean(status?.owner);
   const ownedAutonomousRunning = autonomousRunning && autonomousOwner;
-
-  const snapshotActive = ownedLiveSessionRunning || ownedAutonomousRunning;
-  const { photoUrl, showLoader } = useSnapshotCycle(snapshotActive, sessionId);
+  const lockedByOther = Boolean(status?.blocked || (autonomousRunning && !autonomousOwner));
 
   const [uploadImage, setUploadImage] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [manualResult, setManualResult] = useState<any>(null);
+  const [forcedSample, setForcedSample] = useState<{ recordId: string; image: string } | null>(null);
   const [captureBusy, setCaptureBusy] = useState(false);
   const [detectBusy, setDetectBusy] = useState(false);
   const [sessionBusy, setSessionBusy] = useState(false);
+  const [modeStartSampleVersion, setModeStartSampleVersion] = useState(0);
+  const wasProgressActiveRef = useRef(false);
 
   useEffect(() => {
     const latestDetectionId = status?.last_detection?.record_id || null;
@@ -949,12 +988,40 @@ function DetectionTab({
     });
   }, [isGuest, mode, status]);
 
+  useEffect(() => {
+    setForcedSample(null);
+  }, [sharedSample.version]);
+
+  useEffect(() => {
+    const detection = status?.last_detection;
+    const recordId = detection?.record_id;
+    const image = detection?.image_b64;
+    if (!recordId || !image || forcedSample?.recordId === recordId) return;
+    setForcedSample({ recordId, image });
+  }, [forcedSample?.recordId, status?.last_detection]);
+
   const controlsLocked = captureBusy || detectBusy || sessionBusy;
   const showAutonomousOnly = ownedAutonomousRunning;
   const showManualStopOnly = ownedLiveSessionRunning && !showAutonomousOnly;
-  const showIdleControls = !ownedLiveSessionRunning && !ownedAutonomousRunning;
+  const showIdleControls = !lockedByOther && !ownedLiveSessionRunning && !ownedAutonomousRunning;
   const bigBoxUpload = uploadImage || previewImage;
+  const progressActive = ownedLiveSessionRunning || ownedAutonomousRunning;
+  const sampleReadyForMode = sharedSample.version > modeStartSampleVersion;
+  const displayPhoto = forcedSample?.image || (sampleReadyForMode ? sharedSample.url : null);
+  const manualTotalSeconds = status?.duration_seconds || 600;
+  const manualElapsedSeconds = Math.max(0, manualTotalSeconds - (status?.remaining_seconds || 0));
+  const autonomousTotalSeconds = Math.max(1, Math.ceil((autonomousStatus?.total_duration_ms || 0) / 1000));
+  const autonomousElapsedSeconds = Math.floor((autonomousStatus?.progress_ms || 0) / 1000);
+  const progressTotalSeconds = ownedAutonomousRunning ? autonomousTotalSeconds : manualTotalSeconds;
+  const progressElapsedSeconds = ownedAutonomousRunning ? autonomousElapsedSeconds : manualElapsedSeconds;
   const title = mode === "animal" ? "Animal Detection" : "Plant Disease Detection";
+
+  useEffect(() => {
+    if (progressActive && !wasProgressActiveRef.current) {
+      setModeStartSampleVersion(sharedSample.version);
+    }
+    wasProgressActiveRef.current = progressActive;
+  }, [progressActive, sharedSample.version]);
 
   useEffect(() => {
     if (!ownedLiveSessionRunning && !ownedAutonomousRunning) return;
@@ -1097,9 +1164,8 @@ function DetectionTab({
               {title}
             </h2>
             <p className="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400 sm:text-base">
-              Upload a photo, capture one frame from the Pi camera, or start the shared live
-              detection stream. The backend checks every 5th frame; the frontend shows one fresh
-              snapshot every 2 seconds to keep the Pi lighter.
+              Start model detection from the Pi camera. The backend checks every 7th frame, while
+              the frontend keeps one selected photo visible and refreshes it every 30 seconds.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -1111,7 +1177,7 @@ function DetectionTab({
               <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
                 Live detection running
               </span>
-            ) : status?.blocked || (autonomousRunning && !autonomousOwner) ? (
+            ) : lockedByOther ? (
               <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
                 Bot in use
               </span>
@@ -1149,20 +1215,35 @@ function DetectionTab({
           }`}
         >
           <SnapshotBox
-            active={snapshotActive}
-            photoUrl={photoUrl}
-            showLoader={showLoader}
-            idleMessage="Uploaded images are checked automatically. You can also use the Pi camera capture button or start live detection below."
-            uploadedImage={snapshotActive ? null : bigBoxUpload}
+            active={progressActive}
+            photoUrl={displayPhoto}
+            showLoader={progressActive && (!displayPhoto || sharedSample.loading)}
+            idleMessage={lockedByOther ? "Bot is in use by someone. Please try after sometime." : "Uploaded images are checked automatically. You can also use the Pi camera capture button or start live detection below."}
+            uploadedImage={progressActive ? null : bigBoxUpload}
+            highlight={Boolean(forcedSample)}
           />
         </div>
+
+        {progressActive ? (
+          <StepProgress
+            active={progressActive}
+            elapsedSeconds={progressElapsedSeconds}
+            totalSeconds={progressTotalSeconds}
+          />
+        ) : null}
+
+        {lockedByOther ? (
+          <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 dark:border-amber-500/20 dark:bg-amber-950/20 dark:text-amber-200">
+            Bot is in use by someone. Please try after sometime.
+          </div>
+        ) : null}
 
         <div className="mt-5 flex flex-col gap-3 sm:flex-row">
           {showIdleControls ? (
             <>
               <button
                 onClick={captureOnce}
-                disabled={controlsLocked}
+                disabled={lockedByOther || controlsLocked}
                 className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60"
               >
                 {captureBusy || detectBusy ? (
@@ -1174,7 +1255,7 @@ function DetectionTab({
               </button>
               <button
                 onClick={startLiveDetection}
-                disabled={controlsLocked}
+                disabled={lockedByOther || controlsLocked}
                 className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-600 disabled:opacity-60"
               >
                 {sessionBusy ? (
@@ -1186,7 +1267,7 @@ function DetectionTab({
               </button>
               <button
                 onClick={resetState}
-                disabled={controlsLocked}
+                disabled={lockedByOther || controlsLocked}
                 className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-gray-100 px-5 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-200 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
               >
                 <RefreshCcw className="h-4 w-4" />
@@ -1196,7 +1277,7 @@ function DetectionTab({
           ) : showManualStopOnly ? (
             <button
               onClick={stopLiveDetection}
-              disabled={sessionBusy}
+              disabled={lockedByOther || sessionBusy}
               className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-red-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-60"
             >
               {sessionBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Square className="h-4 w-4" />}
@@ -1249,6 +1330,17 @@ export default function DetectionPage() {
   const [statuses, setStatuses] = useState<AllStatuses | null>(null);
   const [autonomous, setAutonomous] = useState<AutonomousEnvelope["status"] | null>(null);
   const sessionId = getClientSessionId();
+  const sampleActive = Boolean(
+    (statuses?.animal.running && statuses.animal.owner) ||
+      (statuses?.plant.running && statuses.plant.owner) ||
+      (autonomous?.running && autonomous.owner)
+  );
+  const sampled = useSnapshotSampler(sampleActive, sessionId);
+  const sharedSample: SampleState = {
+    url: sampled.photoUrl,
+    version: sampled.version,
+    loading: sampled.showLoader,
+  };
 
   useEffect(() => {
     let active = true;
@@ -1307,8 +1399,8 @@ export default function DetectionPage() {
               </span>
             </div>
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Backend checks every {statuses?.[tab]?.frame_skip || 5}th frame. Frontend shows one
-              snapshot every 2 seconds.
+              Backend checks every {statuses?.[tab]?.frame_skip || 7}th frame. Frontend samples one
+              photo every 30 seconds.
             </p>
           </div>
         </div>
@@ -1343,6 +1435,8 @@ export default function DetectionPage() {
           autonomousOwner={Boolean(autonomous?.owner)}
           autonomousProfileName={autonomous?.profile_name || null}
           sessionId={sessionId}
+          sharedSample={sharedSample}
+          autonomousStatus={autonomous}
         />
       </div>
     </div>

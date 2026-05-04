@@ -37,7 +37,11 @@ interface Message {
 }
 
 function formatNow() {
-  return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return new Date().toLocaleTimeString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 export default function AgriChatPage() {
