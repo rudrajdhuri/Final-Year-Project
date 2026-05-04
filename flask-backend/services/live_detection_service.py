@@ -254,6 +254,7 @@ def _save_detection(mode: str, parsed: dict[str, Any], frame, current_time: date
     filename = f"{mode}_live_{uuid.uuid4().hex[:10]}.jpg"
     image_b64 = _image_to_b64(frame)
     user_id = _states[mode]["user_id"]
+    owner_session_id = _states[mode].get("owner_session_id")
 
     with _flask_app.app_context():
         if mode == "animal":
@@ -268,6 +269,8 @@ def _save_detection(mode: str, parsed: dict[str, Any], frame, current_time: date
                     "message": parsed["message"],
                     "image_b64": image_b64,
                     "timestamp": current_time,
+                    "owner_session_id": owner_session_id,
+                    "source": "live",
                 }
             )
             limit_collection(COLLECTIONS["ANIMALS"], DETECTION_HISTORY_LIMIT)
@@ -281,6 +284,7 @@ def _save_detection(mode: str, parsed: dict[str, Any], frame, current_time: date
                 "message": parsed["message"],
                 "image_b64": image_b64,
                 "timestamp": _iso(current_time),
+                "source": "live",
             }
         else:
             collection = get_collection(COLLECTIONS["PLANTS"])
@@ -292,6 +296,8 @@ def _save_detection(mode: str, parsed: dict[str, Any], frame, current_time: date
                     "filename": filename,
                     "image_b64": image_b64,
                     "timestamp": current_time,
+                    "owner_session_id": owner_session_id,
+                    "source": "live",
                 }
             )
             limit_collection(COLLECTIONS["PLANTS"], DETECTION_HISTORY_LIMIT)
@@ -303,6 +309,7 @@ def _save_detection(mode: str, parsed: dict[str, Any], frame, current_time: date
                 "message": parsed["message"],
                 "image_b64": image_b64,
                 "timestamp": _iso(current_time),
+                "source": "live",
             }
 
     return payload

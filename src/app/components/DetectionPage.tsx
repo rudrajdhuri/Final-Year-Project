@@ -1058,7 +1058,11 @@ function DetectionTab({
       const response = await apiFetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image_base64: imageBase64, user_id: user?.id || "guest" }),
+        body: JSON.stringify({
+          image_base64: imageBase64,
+          user_id: user?.id || "guest",
+          session_id: sessionId,
+        }),
       });
       const payload = await response.json();
       setManualResult(payload);
@@ -1086,7 +1090,7 @@ function DetectionTab({
       const response = await apiFetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: user?.id || "guest" }),
+        body: JSON.stringify({ user_id: user?.id || "guest", session_id: sessionId }),
       });
       const payload = await response.json();
       setManualResult(payload);

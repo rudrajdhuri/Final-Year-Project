@@ -50,6 +50,11 @@ export default function NotificationsPage() {
         .reverse()
         .forEach((item: any, index: number) => {
           const isAnimal = item.mode === "animal";
+          const message = String(item.message || item.result || "");
+          const isAnimalThreat = Boolean(item.threat_detected) || message.includes("Threat");
+          const isPlantDisease = message.toLowerCase().includes("unhealthy") || message.toLowerCase().includes("threat");
+          if ((isAnimal && !isAnimalThreat) || (!isAnimal && !isPlantDisease)) return;
+
           notifications.push({
             id: `guest-${item.mode}-${item.timestamp || index}`,
             type: "warning",

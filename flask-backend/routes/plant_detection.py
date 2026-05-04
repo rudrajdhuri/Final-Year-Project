@@ -42,7 +42,7 @@ def _image_to_b64(filepath: str, max_size: int = 400) -> str:
         return ""
 
 
-def _save_and_cleanup(user_id, result_text, confidence_value, filepath, filename):
+def _save_and_cleanup(user_id, result_text, confidence_value, filepath, filename, owner_session_id=None):
     image_b64 = _image_to_b64(filepath)
     plant_col = get_collection(COLLECTIONS["PLANTS"])
     plant_col.insert_one(
@@ -53,6 +53,8 @@ def _save_and_cleanup(user_id, result_text, confidence_value, filepath, filename
             "filename": filename,
             "image_b64": image_b64,
             "timestamp": now_ist(),
+            "owner_session_id": owner_session_id,
+            "source": "camera",
         }
     )
     limit_collection(COLLECTIONS["PLANTS"])
@@ -66,14 +68,14 @@ def _save_and_cleanup(user_id, result_text, confidence_value, filepath, filename
     return image_b64
 
 
-def _save_frame_and_predict(image, user_id: str, filename_prefix: str):
+def _save_frame_and_predict(image, user_id: str, filename_prefix: str, owner_session_id=None):
     filename = f"{filename_prefix}_{uuid.uuid4().hex[:10]}.jpg"
     filepath = os.path.join(UPLOAD_FOLDER, filename)
     cv2.imwrite(filepath, image)
 
     result_text, confidence = _get_predictor()(filepath)
     confidence_value = round(float(confidence * 100), 2)
-    image_b64 = _save_and_cleanup(user_id, result_text, confidence_value, filepath, filename)
+    image_b64 = _save_and_cleanup(user_id, result_text, confidence_value, filepath, filename, owner_session_id)
 
     return {
         "success": True,
@@ -81,6 +83,7 @@ def _save_frame_and_predict(image, user_id: str, filename_prefix: str):
         "confidence": confidence_value,
         "filename": filename,
         "image_b64": image_b64,
+        "source": "camera",
     }
 
 
@@ -101,7 +104,8 @@ def detect_plant():
             return jsonify({"success": False, "error": "Failed to decode image"}), 400
 
         user_id = request.json.get("user_id", "guest")
-        return jsonify(_save_frame_and_predict(image, user_id, "plant_upload"))
+        owner_session_id = request.json.get("session_id")
+        return jsonify(_save_frame_and_predict(image, user_id, "plant_upload", owner_session_id))
     except Exception as exc:
         return jsonify({"success": False, "error": str(exc)}), 500
 
@@ -111,7 +115,8 @@ def capture_camera():
     try:
         frame, source = capture_single_frame()
         user_id = request.json.get("user_id", "guest") if request.is_json and request.json else "guest"
-        payload = _save_frame_and_predict(frame, user_id, "plant_camera")
+        owner_session_id = request.json.get("session_id") if request.is_json and request.json else None
+        payload = _save_frame_and_predict(frame, user_id, "plant_camera", owner_session_id)
         payload["camera_source"] = source
         return jsonify(payload)
     except Exception as exc:
@@ -127,8 +132,12 @@ def get_plant_image(filename):
 def plant_history():
     try:
         user_id = request.args.get("user_id", "guest")
+        session_id = request.args.get("session_id")
         plant_col = get_collection(COLLECTIONS["PLANTS"])
-        records = list(plant_col.find({"user_id": user_id}).sort("timestamp", -1).limit(15))
+        query = {"user_id": user_id}
+        if user_id == "guest" and session_id:
+            query["owner_session_id"] = session_id
+        records = list(plant_col.find(query).sort("timestamp", -1).limit(15))
         for row in records:
             row["_id"] = str(row["_id"])
             row["timestamp"] = iso_ist(row.get("timestamp"))

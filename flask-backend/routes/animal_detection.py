@@ -63,7 +63,7 @@ def _parse_prediction(result_text: str):
     return threat, animal_name, confidence
 
 
-def _save_and_cleanup(user_id, threat, animal_name, confidence, result_text, filepath, filename):
+def _save_and_cleanup(user_id, threat, animal_name, confidence, result_text, filepath, filename, owner_session_id=None):
     image_b64 = _image_to_b64(filepath)
     animal_col = get_collection(COLLECTIONS["ANIMALS"])
     animal_col.insert_one(
@@ -76,6 +76,8 @@ def _save_and_cleanup(user_id, threat, animal_name, confidence, result_text, fil
             "message": result_text,
             "image_b64": image_b64,
             "timestamp": now_ist(),
+            "owner_session_id": owner_session_id,
+            "source": "camera",
         }
     )
     limit_collection(COLLECTIONS["ANIMALS"])
@@ -89,14 +91,23 @@ def _save_and_cleanup(user_id, threat, animal_name, confidence, result_text, fil
     return image_b64
 
 
-def _save_frame_and_predict(image, user_id: str, filename_prefix: str):
+def _save_frame_and_predict(image, user_id: str, filename_prefix: str, owner_session_id=None):
     filename = f"{filename_prefix}_{uuid.uuid4().hex[:10]}.jpg"
     filepath = os.path.join(UPLOAD_FOLDER, filename)
     cv2.imwrite(filepath, image)
 
     result_text = _get_predictor()(filepath)
     threat, animal_name, confidence = _parse_prediction(result_text)
-    image_b64 = _save_and_cleanup(user_id, threat, animal_name, confidence, result_text, filepath, filename)
+    image_b64 = _save_and_cleanup(
+        user_id,
+        threat,
+        animal_name,
+        confidence,
+        result_text,
+        filepath,
+        filename,
+        owner_session_id,
+    )
 
     return {
         "success": True,
@@ -106,6 +117,7 @@ def _save_frame_and_predict(image, user_id: str, filename_prefix: str):
         "filename": filename,
         "message": result_text,
         "image_b64": image_b64,
+        "source": "camera",
     }
 
 
@@ -126,7 +138,8 @@ def detect_animal():
             return jsonify({"success": False, "error": "Failed to decode image"}), 400
 
         user_id = request.json.get("user_id", "guest")
-        return jsonify(_save_frame_and_predict(image, user_id, "animal_upload"))
+        owner_session_id = request.json.get("session_id")
+        return jsonify(_save_frame_and_predict(image, user_id, "animal_upload", owner_session_id))
     except Exception as exc:
         return jsonify({"success": False, "error": str(exc)}), 500
 
@@ -136,7 +149,8 @@ def capture_camera():
     try:
         frame, source = capture_single_frame()
         user_id = request.json.get("user_id", "guest") if request.is_json and request.json else "guest"
-        payload = _save_frame_and_predict(frame, user_id, "animal_camera")
+        owner_session_id = request.json.get("session_id") if request.is_json and request.json else None
+        payload = _save_frame_and_predict(frame, user_id, "animal_camera", owner_session_id)
         payload["camera_source"] = source
         return jsonify(payload)
     except Exception as exc:
@@ -152,8 +166,12 @@ def get_image(filename):
 def animal_history():
     try:
         user_id = request.args.get("user_id", "guest")
+        session_id = request.args.get("session_id")
         animal_col = get_collection(COLLECTIONS["ANIMALS"])
-        records = list(animal_col.find({"user_id": user_id}).sort("timestamp", -1).limit(15))
+        query = {"user_id": user_id}
+        if user_id == "guest" and session_id:
+            query["owner_session_id"] = session_id
+        records = list(animal_col.find(query).sort("timestamp", -1).limit(15))
         for row in records:
             row["_id"] = str(row["_id"])
             row["timestamp"] = iso_ist(row.get("timestamp"))

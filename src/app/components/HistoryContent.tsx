@@ -336,7 +336,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Camera, Droplets, Leaf, Thermometer, Waves } from "lucide-react";
 
 import { apiFetch } from "@/lib/api";
-import { getGuestHistory, useAuth } from "./AuthContext";
+import { getClientSessionId, getGuestHistory, useAuth } from "./AuthContext";
 
 type HistoryTab = "animal" | "plant" | "moisture" | "temperature" | "humidity";
 
@@ -416,7 +416,7 @@ function DetectionCard({ item, tab }: { item: DetectionItem; tab: "animal" | "pl
           {item.filename && (
             <span className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
               <Camera className="h-3.5 w-3.5" />
-              Camera
+              {item.source === "live" ? "Live" : "Camera"}
             </span>
           )}
         </div>
@@ -513,6 +513,7 @@ export default function HistoryContent() {
   >({ animal: [], plant: [] });
   const [sensorRecords, setSensorRecords] = useState<SensorItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const sessionId = getClientSessionId();
 
   useEffect(() => {
     if (authLoading) return;
@@ -523,17 +524,35 @@ export default function HistoryContent() {
       try {
         if (isGuest) {
           const guestHistory = getGuestHistory();
+          const [animalRes, plantRes] = await Promise.all([
+            apiFetch(`/api/animal/history?user_id=guest&session_id=${encodeURIComponent(sessionId)}`),
+            apiFetch(`/api/plant/history?user_id=guest&session_id=${encodeURIComponent(sessionId)}`),
+          ]).catch(() => [null, null]);
+          const [animalJson, plantJson] = await Promise.all([
+            animalRes?.json().catch(() => ({ success: false })) || { success: false },
+            plantRes?.json().catch(() => ({ success: false })) || { success: false },
+          ]);
           if (!active) return;
 
+          const guestAnimal = guestHistory.filter((item: any) => item.mode === "animal");
+          const guestPlant = guestHistory.filter((item: any) => item.mode === "plant");
+          const mergeByRecord = (backendRows: any[], localRows: any[]) => {
+            const rows = [...backendRows, ...localRows];
+            const seen = new Set<string>();
+            return rows
+              .filter((item: any) => {
+                const key = item._id || item.record_id || item.filename || `${item.mode}-${item.timestamp}`;
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+              })
+              .sort((a: any, b: any) => String(b.timestamp || "").localeCompare(String(a.timestamp || "")))
+              .slice(0, 15);
+          };
+
           setDetectionRecords({
-            animal: guestHistory
-              .filter((item: any) => item.mode === "animal")
-              .slice(-15)
-              .reverse(),
-            plant: guestHistory
-              .filter((item: any) => item.mode === "plant")
-              .slice(-15)
-              .reverse(),
+            animal: mergeByRecord(animalJson.success ? animalJson.data : [], guestAnimal),
+            plant: mergeByRecord(plantJson.success ? plantJson.data : [], guestPlant),
           });
 
           // Sensor readings are all stored with mode "humidity" in SoilSensorPage.
@@ -589,7 +608,7 @@ export default function HistoryContent() {
     return () => {
       active = false;
     };
-  }, [authLoading, isGuest, user]);
+  }, [authLoading, isGuest, sessionId, user]);
 
   const currentItems = useMemo(() => {
     if (tab === "animal" || tab === "plant") return detectionRecords[tab];
