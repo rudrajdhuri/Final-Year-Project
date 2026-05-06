@@ -12,12 +12,28 @@ def _format_timestamp(value):
     return str(value)
 
 
-def _sensor_notifications(user_id: str | None = None, limit: int = 4):
-    if not user_id or user_id == "guest":
+def _is_plant_threat_message(value: str | None) -> bool:
+    lowered = str(value or "").strip().lower()
+    if not lowered:
+        return False
+    return "unhealthy" in lowered and "disease detected" in lowered
+
+
+def _sensor_query(user_id: str | None = None, session_id: str | None = None):
+    if user_id and user_id != "guest":
+        return {"user_id": user_id}
+    if session_id:
+        return {"owner_session_id": session_id}
+    return None
+
+
+def _sensor_notifications(user_id: str | None = None, session_id: str | None = None, limit: int = 4):
+    query = _sensor_query(user_id, session_id)
+    if query is None:
         return []
 
     sensor_col = get_collection(COLLECTIONS["SENSORS"])
-    rows = list(sensor_col.find({"user_id": user_id}).sort("timestamp", -1).limit(limit))
+    rows = list(sensor_col.find(query).sort("timestamp", -1).limit(limit))
     notifications = []
 
     for row in rows:
@@ -60,18 +76,6 @@ def _sensor_notifications(user_id: str | None = None, limit: int = 4):
                 }
             )
 
-        if row.get("obstacle"):
-            notifications.append(
-                {
-                    "id": f"sensor-obstacle-{row.get('_id')}",
-                    "type": "warning",
-                    "title": "Obstacle Was Detected",
-                    "message": "The bot reported an obstacle during a recorded reading session.",
-                    "source": "ultrasonic",
-                    "timestamp": timestamp,
-                }
-            )
-
     if not notifications and rows:
         notifications.append(
             {
@@ -87,12 +91,13 @@ def _sensor_notifications(user_id: str | None = None, limit: int = 4):
     return notifications
 
 
-def _animal_notifications(user_id: str | None = None, limit: int = 4):
-    if not user_id or user_id == "guest":
+def _animal_notifications(user_id: str | None = None, session_id: str | None = None, limit: int = 4):
+    query = _sensor_query(user_id, session_id)
+    if query is None:
         return []
 
     animal_col = get_collection(COLLECTIONS["ANIMALS"])
-    rows = list(animal_col.find({"user_id": user_id}).sort("timestamp", -1).limit(limit))
+    rows = list(animal_col.find(query).sort("timestamp", -1).limit(limit))
     notifications = []
 
     for row in rows:
@@ -114,18 +119,18 @@ def _animal_notifications(user_id: str | None = None, limit: int = 4):
     return notifications
 
 
-def _plant_notifications(user_id: str | None = None, limit: int = 4):
-    if not user_id or user_id == "guest":
+def _plant_notifications(user_id: str | None = None, session_id: str | None = None, limit: int = 4):
+    query = _sensor_query(user_id, session_id)
+    if query is None:
         return []
 
     plant_col = get_collection(COLLECTIONS["PLANTS"])
-    rows = list(plant_col.find({"user_id": user_id}).sort("timestamp", -1).limit(limit))
+    rows = list(plant_col.find(query).sort("timestamp", -1).limit(limit))
     notifications = []
 
     for row in rows:
         result = row.get("result", "") or row.get("message", "")
-        lowered = result.lower()
-        if "unhealthy" not in lowered and "threat" not in lowered:
+        if not _is_plant_threat_message(result):
             continue
 
         notifications.append(
@@ -142,11 +147,43 @@ def _plant_notifications(user_id: str | None = None, limit: int = 4):
     return notifications
 
 
-def get_notifications(limit: int = 10, user_id: str | None = None):
+def _obstacle_notifications(user_id: str | None = None, session_id: str | None = None, limit: int = 6):
+    query = _sensor_query(user_id, session_id)
+    if query is None:
+        return []
+
+    actuator_col = get_collection(COLLECTIONS["ACTUATORS"])
+    rows = list(
+        actuator_col.find(
+            {
+                **query,
+                "type": "sensor_alert",
+                "obstacle": True,
+            }
+        )
+        .sort("timestamp", -1)
+        .limit(limit)
+    )
+    return [
+        {
+            "id": f"obstacle-{row.get('_id')}",
+            "type": "warning",
+            "title": "Obstacle Was Detected",
+            "message": row.get("message")
+            or "The bot reported an obstacle. Please clear the path before continuing.",
+            "source": "ultrasonic",
+            "timestamp": _format_timestamp(row.get("timestamp")),
+        }
+        for row in rows
+    ]
+
+
+def get_notifications(limit: int = 10, user_id: str | None = None, session_id: str | None = None):
     notifications = (
-        _sensor_notifications(user_id=user_id)
-        + _animal_notifications(user_id=user_id)
-        + _plant_notifications(user_id=user_id)
+        _sensor_notifications(user_id=user_id, session_id=session_id)
+        + _animal_notifications(user_id=user_id, session_id=session_id)
+        + _plant_notifications(user_id=user_id, session_id=session_id)
+        + _obstacle_notifications(user_id=user_id, session_id=session_id)
     )
     notifications.sort(key=lambda item: item.get("timestamp") or "", reverse=True)
     return notifications[:limit]

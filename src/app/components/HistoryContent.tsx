@@ -336,6 +336,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Camera, Droplets, Leaf, Thermometer, Waves } from "lucide-react";
 
 import { apiFetch } from "@/lib/api";
+import { classifyPlantResult } from "@/lib/plantResult";
 import { getClientSessionId, getGuestHistory, useAuth } from "./AuthContext";
 
 type HistoryTab = "animal" | "plant" | "moisture" | "temperature" | "humidity";
@@ -375,6 +376,12 @@ function formatIst(value?: string | number | null) {
   });
 }
 
+function toTimeMs(value?: string | number | null) {
+  if (!value) return 0;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function isThresholdCrossed(item: SensorItem, tab: HistoryTab) {
   if (tab === "moisture") return typeof item.moisture === "number" && item.moisture <= 30;
   if (tab === "temperature") {
@@ -389,21 +396,22 @@ function isThresholdCrossed(item: SensorItem, tab: HistoryTab) {
 function DetectionCard({ item, tab }: { item: DetectionItem; tab: "animal" | "plant" }) {
   const isAnimal = tab === "animal";
   const imageUrl = item.image_b64 || null;
+  const plantView = isAnimal ? null : classifyPlantResult(item.result || item.message || "");
   const headline = isAnimal
     ? item.threat_detected
       ? "Animal threat detected"
       : "Animal check completed"
-    : String(item.result || item.message || "").toLowerCase().includes("unhealthy")
-      ? "Plant disease detected"
-      : "Plant check completed";
+    : plantView?.title || "Plant check completed";
 
   const tone = isAnimal
     ? item.threat_detected
       ? "border-red-200 bg-red-50/80 dark:border-red-500/20 dark:bg-red-950/20"
       : "border-emerald-200 bg-emerald-50/70 dark:border-emerald-500/20 dark:bg-emerald-950/20"
-    : String(item.result || item.message || "").toLowerCase().includes("unhealthy")
+    : plantView?.isThreat
       ? "border-orange-200 bg-orange-50/80 dark:border-orange-500/20 dark:bg-orange-950/20"
-      : "border-emerald-200 bg-emerald-50/70 dark:border-emerald-500/20 dark:bg-emerald-950/20";
+      : plantView?.kind === "unclear" || plantView?.kind === "non_plant"
+        ? "border-amber-200 bg-amber-50/80 dark:border-amber-500/20 dark:bg-amber-950/20"
+        : "border-emerald-200 bg-emerald-50/70 dark:border-emerald-500/20 dark:bg-emerald-950/20";
 
   return (
     <div className={`overflow-hidden rounded-3xl border ${tone}`}>
@@ -426,7 +434,7 @@ function DetectionCard({ item, tab }: { item: DetectionItem; tab: "animal" | "pl
             <p className="mt-2 text-sm font-medium leading-6 text-gray-800 dark:text-gray-100">
               {isAnimal
                 ? item.message || item.animal_type || "No animal result"
-                : item.result || item.message || "No plant result"}
+                : plantView?.displayText || item.result || item.message || "No plant result"}
             </p>
           </div>
           <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3 dark:border-gray-700 dark:bg-gray-900/80">
@@ -524,13 +532,15 @@ export default function HistoryContent() {
       try {
         if (isGuest) {
           const guestHistory = getGuestHistory();
-          const [animalRes, plantRes] = await Promise.all([
+          const [animalRes, plantRes, soilRes] = await Promise.all([
             apiFetch(`/api/animal/history?user_id=guest&session_id=${encodeURIComponent(sessionId)}`),
             apiFetch(`/api/plant/history?user_id=guest&session_id=${encodeURIComponent(sessionId)}`),
-          ]).catch(() => [null, null]);
-          const [animalJson, plantJson] = await Promise.all([
+            apiFetch(`/api/soil/history?user_id=guest&session_id=${encodeURIComponent(sessionId)}&limit=10`),
+          ]).catch(() => [null, null, null]);
+          const [animalJson, plantJson, soilJson] = await Promise.all([
             animalRes?.json().catch(() => ({ success: false })) || { success: false },
             plantRes?.json().catch(() => ({ success: false })) || { success: false },
+            soilRes?.json().catch(() => ({ success: false })) || { success: false },
           ]);
           if (!active) return;
 
@@ -546,7 +556,7 @@ export default function HistoryContent() {
                 seen.add(key);
                 return true;
               })
-              .sort((a: any, b: any) => String(b.timestamp || "").localeCompare(String(a.timestamp || "")))
+              .sort((a: any, b: any) => toTimeMs(b.timestamp) - toTimeMs(a.timestamp))
               .slice(0, 15);
           };
 
@@ -559,30 +569,39 @@ export default function HistoryContent() {
           // Each record contains moisture + temperature + humidity together.
           // All 3 tabs (moisture, temperature, humidity) use the same records —
           // SensorCard picks the right field based on the active tab.
+          const guestSensorRows = guestHistory
+            .filter((item: any) => item.mode === "humidity")
+            .map((item: any, index: number) => ({
+              id: item.id || `guest-sensor-${item.timestamp || index}`,
+              moisture: item.moisture ?? null,
+              temperature: item.temperature ?? null,
+              humidity: item.humidity ?? null,
+              ph: item.ph ?? null,
+              obstacle: Boolean(item.obstacle),
+              timestamp:
+                typeof item.timestamp === "number"
+                  ? new Date(item.timestamp).toISOString()
+                  : item.timestamp || null,
+            }));
+          const backendSensorRows = soilJson.success ? soilJson.data : [];
+          const mergedSensors = [...backendSensorRows, ...guestSensorRows];
+          const seenSensors = new Set<string>();
           setSensorRecords(
-            guestHistory
-              .filter((item: any) => item.mode === "humidity")
-              .slice(-10)
-              .reverse()
-              .map((item: any, index: number) => ({
-                id: item.id || `guest-sensor-${item.timestamp || index}`,
-                moisture: item.moisture ?? null,
-                temperature: item.temperature ?? null,
-                humidity: item.humidity ?? null,
-                ph: item.ph ?? null,
-                obstacle: Boolean(item.obstacle),
-                timestamp: item.timestamp
-                  ? typeof item.timestamp === "number"
-                    ? new Date(item.timestamp).toISOString()
-                    : item.timestamp
-                  : null,
-              }))
+            mergedSensors
+              .filter((item: any) => {
+                const key = item.id || `${item.timestamp || "sensor"}-${item.moisture ?? ""}-${item.temperature ?? ""}-${item.humidity ?? ""}`;
+                if (seenSensors.has(key)) return false;
+                seenSensors.add(key);
+                return true;
+              })
+              .sort((a: any, b: any) => toTimeMs(b.timestamp) - toTimeMs(a.timestamp))
+              .slice(0, 10)
           );
         } else {
           const [animalRes, plantRes, soilRes] = await Promise.all([
             apiFetch(`/api/animal/history?user_id=${user!.id}`),
             apiFetch(`/api/plant/history?user_id=${user!.id}`),
-            apiFetch(`/api/soil/history?limit=10`),
+            apiFetch(`/api/soil/history?user_id=${user!.id}&limit=10`),
           ]);
           const [animalJson, plantJson, soilJson] = await Promise.all([
             animalRes.json(),

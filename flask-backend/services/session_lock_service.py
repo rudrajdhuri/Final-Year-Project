@@ -137,6 +137,19 @@ def is_lock_owner(session_id: str | None) -> bool:
         return bool(session_id and _state["locked"] and _state["owner_session_id"] == session_id)
 
 
+def get_active_lock_owner() -> dict[str, Any]:
+    with _lock:
+        _refresh()
+        return {
+            "locked": bool(_state["locked"]),
+            "owner_session_id": _state["owner_session_id"],
+            "owner_user_id": _state["owner_user_id"],
+            "lock_type": _state["lock_type"],
+            "acquired_at": _state["acquired_at"],
+            "last_seen_at": _state["last_seen_at"],
+        }
+
+
 def require_lock_owner(session_id: str | None) -> None:
     if not is_lock_owner(session_id):
         raise RuntimeError("Bot is in use by someone. Please try after sometime.")

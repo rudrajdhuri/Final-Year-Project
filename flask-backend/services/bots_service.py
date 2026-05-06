@@ -137,6 +137,6 @@ def log_bot_command(command):
     if payload["type"] == "movement":
         set_manual_direction(payload.get("direction") or "S")
     elif payload["type"] == "servo":
-        trigger_arm(4.0)
+        trigger_arm(3.0)
     record_manual_command(payload)
     return payload

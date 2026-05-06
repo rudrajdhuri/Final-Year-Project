@@ -4,15 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Bot,
-  Camera,
   Cpu,
   Gamepad2,
   Loader2,
   PauseCircle,
   PlayCircle,
-  Save,
   ShieldAlert,
-  Square,
   Wifi,
   WifiOff,
 } from "lucide-react";
@@ -49,6 +46,7 @@ type Profile = {
   id: string;
   name: string;
   segment_count: number;
+  path_action_count?: number;
   total_duration_ms: number;
   breakpoints_ms: number[];
   speed_pwm: number;
@@ -70,9 +68,11 @@ type AutonomousStatus = {
   total_duration_ms: number;
   progress_ratio: number;
   error: string | null;
-  breaks_taken: number;
   speed_pwm: number;
   obstacle: boolean;
+  path_action_count: number;
+  mode_status: string;
+  playback_paused: boolean;
 };
 
 type LockStatus = {
@@ -105,9 +105,9 @@ function formatDirection(direction: string) {
 
 function formatPauseReason(reason: string | null) {
   if (!reason) return "Running";
-  if (reason === "servo_break") return "Servo sensing break";
   if (reason === "obstacle") return "Obstacle pause";
   if (reason === "stopped_by_user") return "Stopped by user";
+  if (reason === "completed") return "Completed";
   return reason.replaceAll("_", " ");
 }
 
@@ -462,7 +462,7 @@ function useEsp32Controller(userId: string, onToast: (message: string, type: Toa
           raw: COMMANDS[command],
           direction: "SERVO",
           direction_label: "Sensor arm down",
-          message: "Sensor arm moved down for reading capture",
+          message: "Sensor arm moved down for a 3 second reading window",
         });
         onToast("Sensor arm activated for soil readings.", "success");
         return;
@@ -587,6 +587,7 @@ function ControlSurface({
   setSpeed,
   lastCommand,
   sendCommand,
+  controlsBlocked = false,
   hideSideInfoOnMobile = false,
   hideSpeedCard = false,
 }: {
@@ -596,10 +597,11 @@ function ControlSurface({
   setSpeed: (value: number) => void;
   lastCommand: CommandKey;
   sendCommand: (command: CommandKey, release?: boolean) => void | Promise<void>;
+  controlsBlocked?: boolean;
   hideSideInfoOnMobile?: boolean;
   hideSpeedCard?: boolean;
 }) {
-  const actionDisabled = !connected;
+  const actionDisabled = !connected || controlsBlocked;
 
   return (
     <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
@@ -613,6 +615,11 @@ function ControlSurface({
               Servo arm works only when the bot is stopped. Laptop shows 6 buttons and mobile shows
               the joystick with separate stop and servo buttons.
             </p>
+            {controlsBlocked ? (
+              <p className="mt-2 text-sm font-medium text-amber-600 dark:text-amber-300">
+                Manual controls stay locked while autonomous replay is active.
+              </p>
+            ) : null}
           </div>
           <span
             className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] ${
@@ -753,6 +760,7 @@ function ManualPage({
   connected,
   connecting,
   lockedByOther,
+  controlsBlocked,
   speed,
   setSpeed,
   lastCommand,
@@ -763,6 +771,7 @@ function ManualPage({
   connected: boolean;
   connecting: boolean;
   lockedByOther: boolean;
+  controlsBlocked: boolean;
   speed: number;
   setSpeed: (value: number) => void;
   lastCommand: CommandKey;
@@ -771,7 +780,7 @@ function ManualPage({
   sendCommand: (command: CommandKey, release?: boolean) => void | Promise<void>;
 }) {
   useEffect(() => {
-    if (!connected) return;
+    if (!connected || controlsBlocked) return;
 
     const keyMap: Record<string, CommandKey> = {
       ArrowUp: "F",
@@ -804,7 +813,7 @@ function ManualPage({
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [connected, sendCommand]);
+  }, [connected, controlsBlocked, sendCommand]);
 
   return (
     <div className="space-y-5">
@@ -817,11 +826,12 @@ function ManualPage({
       />
       <ControlSurface
         connected={connected}
-        canAdjustSpeed={connected}
+        canAdjustSpeed={connected && !controlsBlocked}
         speed={speed}
         setSpeed={setSpeed}
         lastCommand={lastCommand}
         sendCommand={sendCommand}
+        controlsBlocked={controlsBlocked}
         hideSideInfoOnMobile
       />
     </div>
@@ -832,6 +842,7 @@ function TrainingPage({
   userId,
   sessionId,
   lockedByOther,
+  controlsBlocked,
   connected,
   connecting,
   lastCommand,
@@ -844,6 +855,7 @@ function TrainingPage({
   userId: string;
   sessionId: string;
   lockedByOther: boolean;
+  controlsBlocked: boolean;
   connected: boolean;
   connecting: boolean;
   lastCommand: CommandKey;
@@ -962,6 +974,7 @@ function TrainingPage({
             setSpeed={() => undefined}
             lastCommand={lastCommand}
             sendCommand={sendCommand}
+            controlsBlocked={controlsBlocked}
             hideSideInfoOnMobile
             hideSpeedCard
           />
@@ -986,21 +999,21 @@ function TrainingPage({
               <div className="grid gap-3 sm:grid-cols-3">
                 <button
                   onClick={() => void startTraining()}
-                  disabled={lockedByOther || !connected || busy || Boolean(trainingStatus?.active)}
+                  disabled={lockedByOther || controlsBlocked || !connected || busy || Boolean(trainingStatus?.active)}
                   className="rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-600 disabled:opacity-50"
                 >
                   {busy && !trainingStatus?.active ? "Starting..." : "Start Training"}
                 </button>
                 <button
                   onClick={() => void sendCommand("S", true)}
-                  disabled={lockedByOther || !connected}
+                  disabled={lockedByOther || controlsBlocked || !connected}
                   className="rounded-2xl border border-red-200 bg-red-50 px-5 py-3 text-sm font-semibold text-red-600 transition hover:bg-red-100 disabled:opacity-50 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400 dark:hover:bg-red-500/20"
                 >
                   Stop Training
                 </button>
                 <button
                   onClick={() => void saveTraining()}
-                  disabled={lockedByOther || !connected || busy || !trainingStatus?.active}
+                  disabled={lockedByOther || controlsBlocked || !connected || busy || !trainingStatus?.active}
                   className="rounded-2xl border border-emerald-200 bg-white px-5 py-3 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-50 dark:border-emerald-500/20 dark:bg-gray-900 dark:text-emerald-300 dark:hover:bg-emerald-950/20"
                 >
                   Save Profile
@@ -1063,13 +1076,10 @@ function AutonomousPage({
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState("");
   const [status, setStatus] = useState<AutonomousStatus | null>(null);
-  const [snapshotPhoto, setSnapshotPhoto] = useState<string | null>(null);
-  const [snapshotLoading, setSnapshotLoading] = useState(false);
-  const cycleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const mountedRef = useRef(true);
   const running = Boolean(status?.running);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
+  const releaseAfterFinishRef = useRef(false);
 
   const refreshProfiles = useCallback(async () => {
     try {
@@ -1128,6 +1138,21 @@ function AutonomousPage({
     return () => window.clearInterval(timer);
   }, [running, sessionId, userId]);
 
+  useEffect(() => {
+    if (running || (!status?.completed && !status?.error)) {
+      releaseAfterFinishRef.current = false;
+      return;
+    }
+    if (releaseAfterFinishRef.current) return;
+
+    releaseAfterFinishRef.current = true;
+    void apiFetch("/api/session/release", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId }),
+    }).catch(() => {});
+  }, [running, sessionId, status?.completed, status?.error]);
+
   const startAutonomous = useCallback(async () => {
     if (!selectedProfileId) {
       onToast("Select a saved training profile before starting autonomous mode.", "info");
@@ -1144,7 +1169,7 @@ function AutonomousPage({
       const payload = await response.json();
       if (!response.ok || !payload.success) throw new Error(payload.error || "Could not start autonomous mode");
       setStatus(payload.status);
-      onToast("Autonomous replay started.", "success");
+      onToast("Autonomous replay started on the ESP32 bot.", "success");
     } catch (error) {
       onToast(error instanceof Error ? error.message : "Could not start autonomous mode.", "error");
     } finally {
@@ -1174,64 +1199,6 @@ function AutonomousPage({
   const selectedProfile = profiles.find((item) => item.id === selectedProfileId) || null;
   const progressPercent = Math.round((status?.progress_ratio ?? 0) * 100);
 
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      if (cycleTimerRef.current) clearTimeout(cycleTimerRef.current);
-      setSnapshotPhoto((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return null;
-      });
-    };
-  }, []);
-
-  useEffect(() => {
-    if (cycleTimerRef.current) clearTimeout(cycleTimerRef.current);
-
-    if (!running) {
-      setSnapshotPhoto((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return null;
-      });
-      setSnapshotLoading(false);
-      return;
-    }
-
-    const fetchPhoto = async () => {
-      if (!mountedRef.current || !running) return;
-      setSnapshotLoading(true);
-      try {
-        const res = await apiFetch(
-          `/api/auto/snapshot?session_id=${encodeURIComponent(sessionId)}&t=${Date.now()}`,
-          { cache: "no-store" }
-        );
-        if (!mountedRef.current) return;
-        if (res.ok) {
-          const blob = await res.blob();
-          if (!mountedRef.current) return;
-          const url = URL.createObjectURL(blob);
-          setSnapshotPhoto((prev) => {
-            if (prev) URL.revokeObjectURL(prev);
-            return url;
-          });
-          setSnapshotLoading(false);
-        }
-      } catch {
-        if (!mountedRef.current) return;
-      } finally {
-        if (!mountedRef.current || !running) return;
-        setSnapshotLoading(false);
-        cycleTimerRef.current = setTimeout(() => void fetchPhoto(), 30000);
-      }
-    };
-
-    void fetchPhoto();
-    return () => {
-      if (cycleTimerRef.current) clearTimeout(cycleTimerRef.current);
-    };
-  }, [running, sessionId]);
-
   return (
     <div className="space-y-5">
       <div className="rounded-3xl border border-red-200 bg-red-50 p-5 shadow-sm dark:border-red-500/20 dark:bg-red-950/20 sm:p-6">
@@ -1243,8 +1210,8 @@ function AutonomousPage({
             </p>
             <p className="mt-2 text-sm leading-6 text-red-900 dark:text-red-100/90 sm:text-base">
               Keep the bot at the start point, complete manual training first, then select the saved
-              profile here. Starting autonomous mode will take over the models, servo breaks, and
-              obstacle pause handling from the Pi backend.
+              profile here. The ESP32 will replay the path and handle ultrasonic safety, while the
+              Pi keeps both models, history, notifications, and access control running in the background.
             </p>
           </div>
         </div>
@@ -1261,7 +1228,7 @@ function AutonomousPage({
                   Autonomous Replay
                 </h2>
                 <p className="text-sm text-gray-500 dark:text-gray-400 sm:text-base">
-                  Fixed speed PWM 150, two servo sensing breaks, one shared Pi camera stream, and both models running together.
+                  Fixed PWM 150, ESP32 path replay, ultrasonic safety on the bot, and both Pi models running together in the background.
                 </p>
               </div>
             </div>
@@ -1308,9 +1275,9 @@ function AutonomousPage({
                   </p>
                 </div>
                 <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/60">
-                  <p className="text-xs uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Servo breaks</p>
+                  <p className="text-xs uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Path actions</p>
                   <p className="mt-2 text-base font-semibold text-gray-900 dark:text-white">
-                    {selectedProfile.breakpoints_ms.length}
+                    {selectedProfile.path_action_count ?? 0}
                   </p>
                 </div>
               </div>
@@ -1342,55 +1309,13 @@ function AutonomousPage({
             </div>
         </div>
 
-        <div className="grid items-start gap-5 xl:grid-cols-[1.18fr_0.82fr]">
-          <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
-            <div className="mb-4 flex items-center gap-2">
-              <Camera className="h-5 w-5 text-gray-400 dark:text-gray-500" />
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Autonomous Model Samples</h3>
-            </div>
-            <div className="grid gap-4 lg:grid-cols-2">
-              {["Animal model", "Plant model"].map((label) => (
-                <div key={label} className="overflow-hidden rounded-3xl border border-gray-200 bg-gray-950 dark:border-gray-800">
-                  <div className="border-b border-gray-800 px-4 py-2 text-sm font-semibold text-gray-100">
-                    {label}
-                  </div>
-                  {snapshotPhoto ? (
-                    <img
-                      src={snapshotPhoto}
-                      alt={`${label} autonomous sample`}
-                      className="aspect-video w-full object-cover"
-                    />
-                  ) : snapshotLoading ? (
-                    <div className="flex aspect-video flex-col items-center justify-center bg-gray-200 text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-                      <Loader2 className="mb-3 h-10 w-10 animate-spin" />
-                      <span className="text-sm font-medium">Loading next 30 sec sample...</span>
-                    </div>
-                  ) : running ? (
-                    <div className="flex aspect-video items-center justify-center text-sm text-gray-400">
-                      Waiting for the first 30 sec sample...
-                    </div>
-                  ) : (
-                    <div className="flex aspect-video items-center justify-center text-sm text-gray-400">
-                      Samples appear after autonomous mode starts.
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-            {running ? (
-              <SampleStepProgress
-                elapsedMs={status?.progress_ms ?? 0}
-                totalMs={status?.total_duration_ms ?? selectedProfile?.total_duration_ms ?? 1}
-              />
-            ) : null}
-          </div>
-
+        <div className="grid items-start gap-5 xl:grid-cols-[1.05fr_0.95fr]">
           <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-6">
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Autonomous Status</h3>
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  The Pi pauses progress during ultrasonic stops and servo breaks, then resumes the same saved step.
+                  The Pi monitors replay state, while the ESP32 executes movement and pauses locally for ultrasonic obstacles.
                 </p>
               </div>
               {loading ? <Loader2 className="h-5 w-5 animate-spin text-gray-400" /> : null}
@@ -1412,7 +1337,7 @@ function AutonomousPage({
               <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/60">
                 <p className="text-xs uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Pause state</p>
                 <p className="mt-2 text-base font-semibold text-gray-900 dark:text-white">
-                  {formatPauseReason(status?.paused_reason || null)}
+                  {formatPauseReason(status?.paused_reason || (status?.completed ? "completed" : null))}
                 </p>
               </div>
               <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/60">
@@ -1449,9 +1374,9 @@ function AutonomousPage({
                 </p>
               </div>
               <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-500/20 dark:bg-amber-950/20">
-                <p className="text-xs uppercase tracking-[0.18em] text-amber-700 dark:text-amber-300">Servo breaks</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-amber-700 dark:text-amber-300">Path actions</p>
                 <p className="mt-2 text-lg font-semibold text-amber-800 dark:text-amber-100">
-                  {status?.breaks_taken ?? 0} / 2
+                  {status?.path_action_count ?? selectedProfile?.path_action_count ?? 0}
                 </p>
               </div>
             </div>
@@ -1459,6 +1384,12 @@ function AutonomousPage({
             {status?.started_at ? (
               <div className="mt-5 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 dark:border-gray-800 dark:bg-gray-950/60 dark:text-gray-300">
                 Started at: {formatIst(status.started_at)}
+              </div>
+            ) : null}
+
+            {status?.completed_at ? (
+              <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-950/20 dark:text-emerald-200">
+                Completed at: {formatIst(status.completed_at)}
               </div>
             ) : null}
 
@@ -1490,6 +1421,7 @@ export default function BotControlPage() {
 
   const controller = useEsp32Controller(userId, showToast);
   const lockedByOther = Boolean(lockStatus?.locked && !lockStatus.owner);
+  const controlsBlocked = Boolean(lockStatus?.owner && lockStatus?.lock_type === "autonomous");
 
   const refreshLockStatus = useCallback(async () => {
     try {
@@ -1528,7 +1460,7 @@ export default function BotControlPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white sm:text-3xl">Bot Control</h1>
             <p className="text-sm text-gray-500 dark:text-gray-400 sm:text-base">
-              Manual hotspot driving, separate path training, and Pi-driven autonomous replay.
+              Manual hotspot driving, separate path training, and ESP32-backed autonomous replay.
             </p>
           </div>
         </div>
@@ -1558,6 +1490,7 @@ export default function BotControlPage() {
             connected={controller.connected}
             connecting={controller.connecting}
             lockedByOther={lockedByOther}
+            controlsBlocked={controlsBlocked}
             speed={controller.speed}
             setSpeed={controller.setSpeed}
             lastCommand={controller.lastCommand}
@@ -1570,6 +1503,7 @@ export default function BotControlPage() {
             userId={userId}
             sessionId={controller.sessionId}
             lockedByOther={lockedByOther}
+            controlsBlocked={controlsBlocked}
             connected={controller.connected}
             connecting={controller.connecting}
             lastCommand={controller.lastCommand}

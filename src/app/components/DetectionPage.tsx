@@ -649,6 +649,7 @@ import {
 
 import { getClientSessionId, pushGuestHistory, useAuth } from "./AuthContext";
 import { apiFetch, getApiUrl } from "@/lib/api";
+import { classifyPlantResult } from "@/lib/plantResult";
 
 type Mode = "animal" | "plant";
 
@@ -722,7 +723,8 @@ function formatIst(value?: string | null) {
 function ResultCard({ result, mode }: { result: any; mode: Mode }) {
   const text = result?.message || result?.result || result?.error || "";
   const isAnimalThreat = mode === "animal" && result?.threat_detected;
-  const isPlantThreat = mode === "plant" && String(text).toLowerCase().includes("unhealthy");
+  const plantView = mode === "plant" ? classifyPlantResult(text) : null;
+  const isPlantThreat = Boolean(plantView?.isThreat);
   const isError = result?.success === false;
 
   const theme = isError
@@ -740,11 +742,17 @@ function ResultCard({ result, mode }: { result: any; mode: Mode }) {
           icon: mode === "animal" ? "text-red-500" : "text-orange-500",
           title: mode === "animal" ? "Animal threat detected" : "Plant disease detected",
         }
+      : mode === "plant" && (plantView?.kind === "unclear" || plantView?.kind === "non_plant")
+        ? {
+            border: "border-amber-200 bg-amber-50 dark:border-amber-500/20 dark:bg-amber-950/20",
+            icon: "text-amber-600",
+            title: plantView.title,
+          }
       : {
           border:
             "border-emerald-200 bg-emerald-50 dark:border-emerald-500/20 dark:bg-emerald-950/20",
           icon: "text-emerald-500",
-          title: mode === "animal" ? "No animal threat found" : "Healthy plant result",
+          title: mode === "animal" ? "No animal threat found" : plantView?.title || "Healthy plant result",
         };
 
   const Icon = isError || isAnimalThreat || isPlantThreat ? AlertTriangle : CheckCircle2;
@@ -755,7 +763,9 @@ function ResultCard({ result, mode }: { result: any; mode: Mode }) {
         <Icon className={`mt-1 h-6 w-6 shrink-0 ${theme.icon}`} />
         <div className="min-w-0 flex-1">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{theme.title}</h3>
-          <p className="mt-2 text-sm leading-7 text-gray-700 dark:text-gray-300 sm:text-base">{text}</p>
+          <p className="mt-2 text-sm leading-7 text-gray-700 dark:text-gray-300 sm:text-base">
+            {mode === "plant" ? plantView?.displayText || text : text}
+          </p>
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
             <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3 dark:border-gray-700 dark:bg-gray-900/80">
               <p className="text-xs uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Confidence</p>

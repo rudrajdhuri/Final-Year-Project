@@ -208,6 +208,8 @@ from typing import Any
 from websockets.client import connect
 
 from database import COLLECTIONS, get_collection, limit_collection
+from services.buzzer_service import buzz
+from services.session_lock_service import get_active_lock_owner
 from services.runtime_state import get_runtime_state, is_arm_active, is_bot_running
 from services.time_service import iso_ist, now_ist
 
@@ -219,6 +221,8 @@ _bridge_lock = threading.Lock()
 _state_lock = threading.Lock()
 _flask_app = None
 _last_obstacle_state = False
+_last_obstacle_alert_at: datetime | None = None
+OBSTACLE_REPEAT_SECONDS = 120
 
 _sensor_state: dict[str, Any] = {
     "connected": False,
@@ -274,24 +278,37 @@ def _record_actuator_event(event_type: str, message: str, extra: dict[str, Any] 
         limit_collection(COLLECTIONS["ACTUATORS"], 10)
 
 
+def _obstacle_alert_due(current_time: datetime) -> bool:
+    if _last_obstacle_alert_at is None:
+        return True
+    return (current_time - _last_obstacle_alert_at).total_seconds() >= OBSTACLE_REPEAT_SECONDS
+
+
 def _persist_sensor_reading(reading: dict[str, Any]):
-    global _last_obstacle_state
+    global _last_obstacle_state, _last_obstacle_alert_at
 
     if _flask_app is None:
         return
+
+    lock_owner = get_active_lock_owner()
+    owner_session_id = lock_owner.get("owner_session_id")
+    owner_user_id = lock_owner.get("owner_user_id") or "guest"
+    current_time = reading["timestamp"]
 
     if is_arm_active():
         with _flask_app.app_context():
             sensor_col = get_collection(COLLECTIONS["SENSORS"])
             sensor_col.insert_one(
                 {
+                    "user_id": owner_user_id,
+                    "owner_session_id": owner_session_id,
                     "moisture": reading["moisture"],
                     "temperature": reading["temperature"],
                     "humidity": reading["humidity"],
                     "ph": reading["ph"],
                     "obstacle": reading["obstacle"],
                     "source": "esp32",
-                    "timestamp": reading["timestamp"],
+                    "timestamp": current_time,
                 }
             )
             limit_collection(COLLECTIONS["SENSORS"], 50)
@@ -302,15 +319,26 @@ def _persist_sensor_reading(reading: dict[str, Any]):
                 "temperature": reading["temperature"],
                 "humidity": reading["humidity"],
                 "ph": reading["ph"],
-                "timestamp": reading["timestamp"],
+                "timestamp": current_time,
             }
 
-    if reading["obstacle"] and not _last_obstacle_state and is_bot_running():
+    if reading["obstacle"] and is_bot_running() and owner_session_id and _obstacle_alert_due(current_time):
         _record_actuator_event(
             "sensor_alert",
-            "Obstacle detected by ultrasonic sensor. Bot should remain stopped.",
-            {"obstacle": True},
+            "Obstacle detected by ultrasonic sensor. Please clear the path before continuing.",
+            {
+                "obstacle": True,
+                "user_id": owner_user_id,
+                "owner_session_id": owner_session_id,
+                "lock_type": lock_owner.get("lock_type"),
+            },
         )
+        buzz(2)
+        _last_obstacle_alert_at = current_time
+
+    if not reading["obstacle"]:
+        _last_obstacle_alert_at = None
+
     _last_obstacle_state = reading["obstacle"]
 
 
@@ -335,10 +363,20 @@ def get_sensor_snapshot() -> dict[str, Any]:
         }
 
 
-def get_sensor_history(limit: int = 10, user_id: str | None = None) -> list[dict[str, Any]]:
-    # Option A: always return latest global readings regardless of user_id
+def get_sensor_history(
+    limit: int = 10,
+    user_id: str | None = None,
+    owner_session_id: str | None = None,
+) -> list[dict[str, Any]]:
     sensor_col = get_collection(COLLECTIONS["SENSORS"])
-    rows = list(sensor_col.find().sort("timestamp", -1).limit(limit))
+    if user_id and user_id != "guest":
+        query: dict[str, Any] = {"user_id": user_id}
+    elif owner_session_id:
+        query = {"owner_session_id": owner_session_id}
+    else:
+        query = {}
+
+    rows = list(sensor_col.find(query).sort("timestamp", -1).limit(limit))
     rows.reverse()
     return [
         {
@@ -348,6 +386,8 @@ def get_sensor_history(limit: int = 10, user_id: str | None = None) -> list[dict
             "humidity": row.get("humidity"),
             "ph": row.get("ph"),
             "obstacle": bool(row.get("obstacle", False)),
+            "user_id": row.get("user_id"),
+            "owner_session_id": row.get("owner_session_id"),
             "timestamp": _iso_timestamp(row.get("timestamp")),
         }
         for row in rows

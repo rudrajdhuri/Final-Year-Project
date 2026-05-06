@@ -424,7 +424,7 @@ def _run_worker():
                         annotations.append(("Plant disease", parsed["message"], (0, 145, 255)))
 
                     saved = _save_detection(mode, parsed, annotated, current_time)
-                    if mode == "animal" and _states[mode].get("owner_session_id"):
+                    if _states[mode].get("owner_session_id"):
                         buzz(2)
                     with _lock:
                         _states[mode]["last_detection"] = saved
@@ -458,7 +458,7 @@ def start_detection(
     duration_seconds: int | None = SESSION_DURATION_SECONDS,
     owner_session_id: str | None = None,
 ) -> dict[str, Any]:
-    global _worker_thread
+    global _worker_thread, _frame_counter
 
     if mode not in _states:
         raise ValueError("Invalid detection mode")
@@ -480,6 +480,8 @@ def start_detection(
         _states[mode]["detection_count"] = 0
 
         should_start_thread = _worker_thread is None or not _worker_thread.is_alive()
+        if should_start_thread:
+            _frame_counter = FRAME_SKIP - 1
 
     if should_start_thread:
         _worker_thread = threading.Thread(target=_run_worker, name="live-detection-worker", daemon=True)

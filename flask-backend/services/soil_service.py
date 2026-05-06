@@ -63,7 +63,7 @@ from database import COLLECTIONS
 from services.esp32_bridge import get_sensor_history, get_sensor_snapshot
 
 
-def get_soil_readings(user_id: str | None = None):
+def get_soil_readings(user_id: str | None = None, owner_session_id: str | None = None):
     snapshot = get_sensor_snapshot()
     return {
         "moisture": snapshot.get("moisture"),
@@ -75,6 +75,6 @@ def get_soil_readings(user_id: str | None = None):
         "timestamp": snapshot.get("timestamp"),
         "arm_active": snapshot.get("arm_active"),
         "bot_running": snapshot.get("bot_running"),
-        "history": get_sensor_history(10),
+        "history": get_sensor_history(10, user_id=user_id, owner_session_id=owner_session_id),
         "sensor_source": COLLECTIONS["SENSORS"],
     }

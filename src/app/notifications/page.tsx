@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Bell, CheckCircle2, Clock3, ShieldAlert } from "lucide-react";
 
 import { apiFetch } from "@/lib/api";
-import { getGuestHistory, useAuth } from "../components/AuthContext";
+import { getClientSessionId, getGuestHistory, useAuth } from "../components/AuthContext";
+import { classifyPlantResult } from "@/lib/plantResult";
 
 type NotificationItem = {
   id: string;
@@ -30,11 +31,18 @@ function formatTime(value?: string | null) {
   });
 }
 
+function toTimeMs(value?: string | number | null) {
+  if (!value) return 0;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 export default function NotificationsPage() {
   const { user, isGuest, loading: authLoading } = useAuth();
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const sessionId = useMemo(() => getClientSessionId(), []);
 
   useEffect(() => {
     if (authLoading) return;
@@ -52,7 +60,8 @@ export default function NotificationsPage() {
           const isAnimal = item.mode === "animal";
           const message = String(item.message || item.result || "");
           const isAnimalThreat = Boolean(item.threat_detected) || message.includes("Threat");
-          const isPlantDisease = message.toLowerCase().includes("unhealthy") || message.toLowerCase().includes("threat");
+          const plantView = classifyPlantResult(message);
+          const isPlantDisease = plantView.isThreat;
           if ((isAnimal && !isAnimalThreat) || (!isAnimal && !isPlantDisease)) return;
 
           notifications.push({
@@ -61,7 +70,7 @@ export default function NotificationsPage() {
             title: isAnimal ? "Animal Threat Detected" : "Plant Disease Detected",
             message: isAnimal
               ? item.message || `Threat detected: ${item.animal_type || "Unknown animal"}`
-              : item.result || item.message || "Plant disease detected",
+              : plantView.displayText,
             source: isAnimal ? "animal_detection" : "plant_detection",
             timestamp:
               typeof item.timestamp === "number"
@@ -146,28 +155,39 @@ export default function NotificationsPage() {
         if (!active) return;
 
         if (isGuest) {
-          const merged = buildGuestNotifications();
-          merged.sort((a: NotificationItem, b: NotificationItem) =>
-            String(b.timestamp || "").localeCompare(String(a.timestamp || ""))
+          const fallbackGuest = buildGuestNotifications();
+          const response = await apiFetch(
+            `/api/system/notifications?user_id=guest&session_id=${encodeURIComponent(sessionId)}`
+          ).catch(() => null);
+          const payload = response?.ok ? await response.json().catch(() => null) : null;
+          const backendItems = Array.isArray(payload?.data) ? payload.data : [];
+          const mergedMap = new Map<string, NotificationItem>();
+          [...backendItems, ...fallbackGuest].forEach((item) => {
+            const key = `${item.source}|${item.title}|${item.timestamp || ""}|${item.message}`;
+            mergedMap.set(key, item);
+          });
+          const merged = Array.from(mergedMap.values());
+          merged.sort(
+            (a: NotificationItem, b: NotificationItem) => toTimeMs(b.timestamp) - toTimeMs(a.timestamp)
           );
           setItems(merged);
           setError(null);
-          return;
+        } else {
+          const query = new URLSearchParams();
+          if (user?.id) query.set("user_id", user.id);
+          query.set("session_id", sessionId);
+          const response = await apiFetch(`/api/system/notifications?${query.toString()}`);
+          if (!response.ok) throw new Error("Notifications could not be loaded");
+
+          const payload = await response.json();
+          if (!active) return;
+          const backendItems = Array.isArray(payload?.data) ? payload.data : [];
+          backendItems.sort(
+            (a: NotificationItem, b: NotificationItem) => toTimeMs(b.timestamp) - toTimeMs(a.timestamp)
+          );
+          setItems(backendItems);
+          setError(null);
         }
-
-        const query = user?.id ? `?user_id=${encodeURIComponent(user.id)}` : "";
-        const response = await apiFetch(`/api/system/notifications${query}`);
-        if (!response.ok) throw new Error("Notifications could not be loaded");
-
-        const payload = await response.json();
-        if (!active) return;
-        const backendItems = Array.isArray(payload?.data) ? payload.data : [];
-        const merged: NotificationItem[] = backendItems;
-        merged.sort((a: NotificationItem, b: NotificationItem) =>
-          String(b.timestamp || "").localeCompare(String(a.timestamp || ""))
-        );
-        setItems(merged);
-        setError(null);
       } catch (err: any) {
         if (!active) return;
         setError(err.message || "Unable to load notifications");
@@ -182,7 +202,7 @@ export default function NotificationsPage() {
       active = false;
       window.clearInterval(timer);
     };
-  }, [authLoading, isGuest, user]);
+  }, [authLoading, isGuest, sessionId, user]);
 
   const summary = useMemo(() => {
     const warnings = items.filter((item) => item.type === "warning").length;

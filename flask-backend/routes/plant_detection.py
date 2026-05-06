@@ -7,6 +7,7 @@ import numpy as np
 from flask import Blueprint, jsonify, request, send_from_directory
 
 from database import COLLECTIONS, get_collection, limit_collection
+from services.buzzer_service import buzz
 from services.camera_service import capture_single_frame
 from services.time_service import iso_ist, now_ist
 
@@ -84,6 +85,7 @@ def _save_frame_and_predict(image, user_id: str, filename_prefix: str, owner_ses
         "filename": filename,
         "image_b64": image_b64,
         "source": "camera",
+        "relevant": "UNHEALTHY" in result_text.upper(),
     }
 
 
@@ -105,7 +107,10 @@ def detect_plant():
 
         user_id = request.json.get("user_id", "guest")
         owner_session_id = request.json.get("session_id")
-        return jsonify(_save_frame_and_predict(image, user_id, "plant_upload", owner_session_id))
+        payload = _save_frame_and_predict(image, user_id, "plant_upload", owner_session_id)
+        if payload.get("relevant"):
+            buzz(2)
+        return jsonify(payload)
     except Exception as exc:
         return jsonify({"success": False, "error": str(exc)}), 500
 
@@ -118,6 +123,8 @@ def capture_camera():
         owner_session_id = request.json.get("session_id") if request.is_json and request.json else None
         payload = _save_frame_and_predict(frame, user_id, "plant_camera", owner_session_id)
         payload["camera_source"] = source
+        if payload.get("relevant"):
+            buzz(2)
         return jsonify(payload)
     except Exception as exc:
         return jsonify({"success": False, "error": str(exc)}), 500
