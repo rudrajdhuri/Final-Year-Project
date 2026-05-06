@@ -7,6 +7,11 @@ from services.time_service import iso_ist, now_ist
 
 
 LOCK_TIMEOUT_SECONDS = 35
+LOCK_TIMEOUT_BY_TYPE = {
+    "model_manual": 15 * 60,
+    "bot_control": 60,
+    "autonomous": 2 * 60 * 60,
+}
 ALLOWED_LOCK_TYPES = {"model_manual", "bot_control", "autonomous"}
 
 _lock = threading.RLock()
@@ -30,11 +35,15 @@ def _iso(value: datetime | None) -> str | None:
     return iso_ist(value)
 
 
+def _timeout_seconds(lock_type: str | None) -> int:
+    return int(LOCK_TIMEOUT_BY_TYPE.get(lock_type, LOCK_TIMEOUT_SECONDS))
+
+
 def _expired(current_time: datetime) -> bool:
     last_seen = _state.get("last_seen_at")
     if not _state.get("locked") or not last_seen:
         return False
-    return current_time - last_seen > timedelta(seconds=LOCK_TIMEOUT_SECONDS)
+    return current_time - last_seen > timedelta(seconds=_timeout_seconds(_state.get("lock_type")))
 
 
 def _clear(run_callbacks: bool = True) -> None:
@@ -76,7 +85,7 @@ def get_lock_status(session_id: str | None = None) -> dict[str, Any]:
             "lock_id": _state["lock_id"] if owner else None,
             "acquired_at": _iso(_state["acquired_at"]),
             "last_seen_at": _iso(_state["last_seen_at"]),
-            "timeout_seconds": LOCK_TIMEOUT_SECONDS,
+            "timeout_seconds": _timeout_seconds(_state.get("lock_type")),
         }
 
 

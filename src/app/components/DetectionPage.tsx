@@ -978,8 +978,6 @@ function DetectionTab({
   const [captureBusy, setCaptureBusy] = useState(false);
   const [detectBusy, setDetectBusy] = useState(false);
   const [sessionBusy, setSessionBusy] = useState(false);
-  const [modeStartSampleVersion, setModeStartSampleVersion] = useState(0);
-  const wasProgressActiveRef = useRef(false);
 
   useEffect(() => {
     const latestDetectionId = status?.last_detection?.record_id || null;
@@ -1016,8 +1014,7 @@ function DetectionTab({
   const showIdleControls = !lockedByOther && !ownedLiveSessionRunning && !ownedAutonomousRunning;
   const bigBoxUpload = uploadImage || previewImage;
   const progressActive = ownedLiveSessionRunning || ownedAutonomousRunning;
-  const sampleReadyForMode = sharedSample.version > modeStartSampleVersion;
-  const displayPhoto = forcedSample?.image || (sampleReadyForMode ? sharedSample.url : null);
+  const displayPhoto = forcedSample?.image || sharedSample.url;
   const manualTotalSeconds = status?.duration_seconds || 600;
   const manualElapsedSeconds = Math.max(0, manualTotalSeconds - (status?.remaining_seconds || 0));
   const autonomousTotalSeconds = Math.max(1, Math.ceil((autonomousStatus?.total_duration_ms || 0) / 1000));
@@ -1025,13 +1022,6 @@ function DetectionTab({
   const progressTotalSeconds = ownedAutonomousRunning ? autonomousTotalSeconds : manualTotalSeconds;
   const progressElapsedSeconds = ownedAutonomousRunning ? autonomousElapsedSeconds : manualElapsedSeconds;
   const title = mode === "animal" ? "Animal Detection" : "Plant Disease Detection";
-
-  useEffect(() => {
-    if (progressActive && !wasProgressActiveRef.current) {
-      setModeStartSampleVersion(sharedSample.version);
-    }
-    wasProgressActiveRef.current = progressActive;
-  }, [progressActive, sharedSample.version]);
 
   useEffect(() => {
     if (!ownedLiveSessionRunning && !ownedAutonomousRunning) return;

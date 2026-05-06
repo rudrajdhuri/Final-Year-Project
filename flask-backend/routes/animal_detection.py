@@ -9,6 +9,7 @@ from flask import Blueprint, jsonify, request, send_from_directory
 from database import COLLECTIONS, get_collection, limit_collection
 from services.camera_service import capture_single_frame
 from services.buzzer_service import buzz
+from services.live_detection_service import capture_cached_frame
 from services.time_service import iso_ist, now_ist
 
 
@@ -66,6 +67,7 @@ def _parse_prediction(result_text: str):
 
 def _save_and_cleanup(user_id, threat, animal_name, confidence, result_text, filepath, filename, owner_session_id=None):
     image_b64 = _image_to_b64(filepath)
+    timestamp = now_ist()
     animal_col = get_collection(COLLECTIONS["ANIMALS"])
     animal_col.insert_one(
         {
@@ -76,7 +78,7 @@ def _save_and_cleanup(user_id, threat, animal_name, confidence, result_text, fil
             "filename": filename,
             "message": result_text,
             "image_b64": image_b64,
-            "timestamp": now_ist(),
+            "timestamp": timestamp,
             "owner_session_id": owner_session_id,
             "source": "camera",
         }
@@ -89,7 +91,7 @@ def _save_and_cleanup(user_id, threat, animal_name, confidence, result_text, fil
     except Exception:
         pass
 
-    return image_b64
+    return image_b64, timestamp
 
 
 def _save_frame_and_predict(image, user_id: str, filename_prefix: str, owner_session_id=None):
@@ -99,7 +101,7 @@ def _save_frame_and_predict(image, user_id: str, filename_prefix: str, owner_ses
 
     result_text = _get_predictor()(filepath)
     threat, animal_name, confidence = _parse_prediction(result_text)
-    image_b64 = _save_and_cleanup(
+    image_b64, timestamp = _save_and_cleanup(
         user_id,
         threat,
         animal_name,
@@ -119,6 +121,7 @@ def _save_frame_and_predict(image, user_id: str, filename_prefix: str, owner_ses
         "message": result_text,
         "image_b64": image_b64,
         "source": "camera",
+        "timestamp": iso_ist(timestamp),
     }
 
 
@@ -151,9 +154,12 @@ def detect_animal():
 @animal_detection_bp.route("/capture-camera", methods=["POST"])
 def capture_camera():
     try:
-        frame, source = capture_single_frame()
         user_id = request.json.get("user_id", "guest") if request.is_json and request.json else "guest"
         owner_session_id = request.json.get("session_id") if request.is_json and request.json else None
+        frame = capture_cached_frame(owner_session_id)
+        source = "shared-live-cache" if frame is not None else None
+        if frame is None:
+            frame, source = capture_single_frame()
         payload = _save_frame_and_predict(frame, user_id, "animal_camera", owner_session_id)
         payload["camera_source"] = source
         if payload.get("threat_detected"):

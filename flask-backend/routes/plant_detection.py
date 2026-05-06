@@ -9,6 +9,7 @@ from flask import Blueprint, jsonify, request, send_from_directory
 from database import COLLECTIONS, get_collection, limit_collection
 from services.buzzer_service import buzz
 from services.camera_service import capture_single_frame
+from services.live_detection_service import capture_cached_frame
 from services.time_service import iso_ist, now_ist
 
 
@@ -45,6 +46,7 @@ def _image_to_b64(filepath: str, max_size: int = 400) -> str:
 
 def _save_and_cleanup(user_id, result_text, confidence_value, filepath, filename, owner_session_id=None):
     image_b64 = _image_to_b64(filepath)
+    timestamp = now_ist()
     plant_col = get_collection(COLLECTIONS["PLANTS"])
     plant_col.insert_one(
         {
@@ -53,7 +55,7 @@ def _save_and_cleanup(user_id, result_text, confidence_value, filepath, filename
             "confidence": confidence_value,
             "filename": filename,
             "image_b64": image_b64,
-            "timestamp": now_ist(),
+            "timestamp": timestamp,
             "owner_session_id": owner_session_id,
             "source": "camera",
         }
@@ -66,7 +68,7 @@ def _save_and_cleanup(user_id, result_text, confidence_value, filepath, filename
     except Exception:
         pass
 
-    return image_b64
+    return image_b64, timestamp
 
 
 def _save_frame_and_predict(image, user_id: str, filename_prefix: str, owner_session_id=None):
@@ -76,7 +78,14 @@ def _save_frame_and_predict(image, user_id: str, filename_prefix: str, owner_ses
 
     result_text, confidence = _get_predictor()(filepath)
     confidence_value = round(float(confidence * 100), 2)
-    image_b64 = _save_and_cleanup(user_id, result_text, confidence_value, filepath, filename, owner_session_id)
+    image_b64, timestamp = _save_and_cleanup(
+        user_id,
+        result_text,
+        confidence_value,
+        filepath,
+        filename,
+        owner_session_id,
+    )
 
     return {
         "success": True,
@@ -85,6 +94,7 @@ def _save_frame_and_predict(image, user_id: str, filename_prefix: str, owner_ses
         "filename": filename,
         "image_b64": image_b64,
         "source": "camera",
+        "timestamp": iso_ist(timestamp),
         "relevant": "UNHEALTHY" in result_text.upper(),
     }
 
@@ -118,9 +128,12 @@ def detect_plant():
 @plant_detection_bp.route("/capture-camera", methods=["POST"])
 def capture_camera():
     try:
-        frame, source = capture_single_frame()
         user_id = request.json.get("user_id", "guest") if request.is_json and request.json else "guest"
         owner_session_id = request.json.get("session_id") if request.is_json and request.json else None
+        frame = capture_cached_frame(owner_session_id)
+        source = "shared-live-cache" if frame is not None else None
+        if frame is None:
+            frame, source = capture_single_frame()
         payload = _save_frame_and_predict(frame, user_id, "plant_camera", owner_session_id)
         payload["camera_source"] = source
         if payload.get("relevant"):

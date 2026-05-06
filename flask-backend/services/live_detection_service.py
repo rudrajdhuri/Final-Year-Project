@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import cv2
+import numpy as np
 from flask import Response
 
 from database import COLLECTIONS, get_collection, limit_collection
@@ -613,3 +614,16 @@ def frame_snapshot_response(viewer_session_id: str | None = None):
         return Response(status=status)
 
     return Response(frame, mimetype="image/jpeg")
+
+
+def capture_cached_frame(viewer_session_id: str | None = None):
+    with _lock:
+        frame = _latest_frame if _viewer_can_see(viewer_session_id) else None
+
+    if frame is None:
+        return None
+
+    decoded = cv2.imdecode(np.frombuffer(frame, dtype=np.uint8), cv2.IMREAD_COLOR)
+    if decoded is None or getattr(decoded, "size", 0) == 0:
+        return None
+    return decoded.copy()

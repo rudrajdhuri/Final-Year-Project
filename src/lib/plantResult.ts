@@ -35,7 +35,7 @@ export function classifyPlantResult(rawValue: string | null | undefined): PlantR
     };
   }
 
-  if (lowered.includes("animal image given")) {
+  if (lowered.includes("animal image")) {
     return {
       kind: "non_plant",
       title: "No plant detected",
@@ -44,7 +44,11 @@ export function classifyPlantResult(rawValue: string | null | undefined): PlantR
     };
   }
 
-  if (lowered.includes("not a plant detected") || lowered.includes("no plant detected")) {
+  if (
+    lowered.includes("not a plant") ||
+    lowered.includes("no plant detected") ||
+    lowered.includes("not plant detected")
+  ) {
     return {
       kind: "non_plant",
       title: "No plant detected",
