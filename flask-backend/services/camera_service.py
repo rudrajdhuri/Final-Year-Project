@@ -119,10 +119,7 @@ def _normalize_picamera_frame(frame):
         raise RuntimeError("Pi camera returned an empty frame")
 
     if len(frame.shape) == 3 and frame.shape[2] == 4:
-        return cv2.cvtColor(frame, cv2.COLOR_RGBA2BGR)
-
-    if len(frame.shape) == 3 and frame.shape[2] == 3:
-        return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        return cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
 
     return frame
 
@@ -136,11 +133,17 @@ def _open_camera():
 
     try:
         from picamera2 import Picamera2
+        try:
+            from libcamera import Transform
+            transform = Transform(hflip=1, vflip=1)
+        except Exception:
+            transform = None
 
         camera = Picamera2()
-        config = camera.create_still_configuration(
-            main={"size": _PI_CAPTURE_SIZE, "format": "RGB888"},
-        )
+        config_kwargs = {"main": {"size": _PI_CAPTURE_SIZE, "format": "BGR888"}}
+        if transform is not None:
+            config_kwargs["transform"] = transform
+        config = camera.create_still_configuration(**config_kwargs)
         camera.configure(config)
         camera.start()
         time.sleep(0.6)
