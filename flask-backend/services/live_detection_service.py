@@ -184,7 +184,8 @@ def _read_frame():
         _open_camera()
 
     if _camera_kind == "picamera2":
-        return _camera_handle.capture_array()
+        frame = _camera_handle.capture_array()
+        return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)  # ← ADD this line
 
     ok, frame = _camera_handle.read()
     if not ok:

@@ -1,8 +1,111 @@
+# import threading
+# import time
+
+# import cv2
+
+
+# _camera_lock = threading.Lock()
+# _camera_handle = None
+# _camera_kind = None
+# _last_opened_at = 0.0
+# _CAMERA_KEEPALIVE_SECONDS = 12
+
+
+# def _open_camera():
+#     global _camera_handle, _camera_kind, _last_opened_at
+
+#     if _camera_handle is not None:
+#         _last_opened_at = time.time()
+#         return
+
+#     try:
+#         from picamera2 import Picamera2
+
+#         camera = Picamera2()
+#         config = camera.create_video_configuration(main={"size": (640, 480), "format": "BGR888"})
+#         camera.configure(config)
+#         camera.start()
+#         time.sleep(0.2)
+#         _camera_handle = camera
+#         _camera_kind = "picamera2"
+#         _last_opened_at = time.time()
+#         return
+#     except Exception:
+#         pass
+
+#     fallback = cv2.VideoCapture(0)
+#     fallback.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+#     fallback.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+#     if not fallback.isOpened():
+#         raise RuntimeError("Pi camera could not be opened")
+
+#     _camera_handle = fallback
+#     _camera_kind = "opencv"
+#     _last_opened_at = time.time()
+
+
+# def _close_camera():
+#     global _camera_handle, _camera_kind
+
+#     if _camera_handle is None:
+#         return
+
+#     try:
+#         if _camera_kind == "picamera2":
+#             _camera_handle.stop()
+#             _camera_handle.close()
+#         else:
+#             _camera_handle.release()
+#     except Exception:
+#         pass
+#     finally:
+#         _camera_handle = None
+#         _camera_kind = None
+
+
+# def _schedule_close():
+#     def closer():
+#         global _last_opened_at
+#         time.sleep(_CAMERA_KEEPALIVE_SECONDS)
+#         with _camera_lock:
+#             if _camera_handle is not None and time.time() - _last_opened_at >= _CAMERA_KEEPALIVE_SECONDS:
+#                 _close_camera()
+
+#     threading.Thread(target=closer, daemon=True).start()
+
+
+# def capture_single_frame():
+#     with _camera_lock:
+#         _open_camera()
+
+#         try:
+#             if _camera_kind == "picamera2":
+#                 output = _camera_handle.capture_array()
+#                 _last_opened_at = time.time()
+#                 _schedule_close()
+#                 return output, "picamera2"
+
+#             frame = None
+#             ok = False
+#             for _ in range(2):
+#                 ok, frame = _camera_handle.read()
+
+#             if not ok or frame is None or frame.size == 0:
+#                 raise RuntimeError("Failed to capture image from the camera")
+
+#             _last_opened_at = time.time()
+#             _schedule_close()
+#             return frame, "opencv"
+#         except Exception:
+#             _close_camera()
+#             raise
+
+
+
 import threading
 import time
-
 import cv2
-
+# from libcamera import ColorSpace  # Add this import for colorspace fix
 
 _camera_lock = threading.Lock()
 _camera_handle = None
@@ -22,7 +125,11 @@ def _open_camera():
         from picamera2 import Picamera2
 
         camera = Picamera2()
-        config = camera.create_video_configuration(main={"size": (640, 480), "format": "BGR888"})
+        # Fixed config: Explicit colorspace to prevent blue tint
+        config = camera.create_video_configuration(
+            main={"size": (640, 480), "format": "BGR888"},
+            # colour_space=ColorSpace.Srgb  # Ensures proper color interpretation
+        )
         camera.configure(config)
         camera.start()
         time.sleep(0.2)
@@ -81,6 +188,8 @@ def capture_single_frame():
         try:
             if _camera_kind == "picamera2":
                 output = _camera_handle.capture_array()
+                # Fallback channel swap if colorspace fix insufficient
+                # output[:,:,0], output[:,:,2] = output[:,:,2].copy(), output[:,:,0].copy()
                 _last_opened_at = time.time()
                 _schedule_close()
                 return output, "picamera2"
