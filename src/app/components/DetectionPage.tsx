@@ -695,9 +695,25 @@ type AutonomousEnvelope = {
 
 type SampleState = {
   url: string | null;
+  dataUrl: string | null;
   version: number;
   loading: boolean;
 };
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error("Failed to convert blob to data URL"));
+    };
+    reader.onerror = () => reject(reader.error || new Error("Blob read failed"));
+    reader.readAsDataURL(blob);
+  });
+}
 
 function formatRemaining(seconds: number) {
   const safe = Math.max(0, seconds || 0);
@@ -726,7 +742,16 @@ function ResultCard({ result, mode }: { result: any; mode: Mode }) {
   const isAnimalThreat = mode === "animal" && result?.threat_detected;
   const plantView = mode === "plant" ? classifyPlantResult(text) : null;
   const isPlantThreat = Boolean(plantView?.isThreat);
+  const isAnimalUnclear = mode === "animal" && !result?.threat_detected && /unclear|ambiguous|uncertain/i.test(text);
   const isError = result?.success === false;
+  const sourceLabel =
+    result?.source === "live"
+      ? "Auto detection sample"
+      : result?.source === "camera"
+        ? "Pi camera"
+        : result?.filename
+          ? "Pi camera"
+          : "Uploaded image";
 
   const theme = isError
     ? {
@@ -743,6 +768,12 @@ function ResultCard({ result, mode }: { result: any; mode: Mode }) {
           icon: mode === "animal" ? "text-red-500" : "text-orange-500",
           title: mode === "animal" ? "Animal threat detected" : "Plant disease detected",
         }
+      : isAnimalUnclear
+        ? {
+            border: "border-amber-200 bg-amber-50 dark:border-amber-500/20 dark:bg-amber-950/20",
+            icon: "text-amber-600",
+            title: "Animal detection unclear",
+          }
       : mode === "plant" && (plantView?.kind === "unclear" || plantView?.kind === "non_plant")
         ? {
             border: "border-amber-200 bg-amber-50 dark:border-amber-500/20 dark:bg-amber-950/20",
@@ -783,7 +814,7 @@ function ResultCard({ result, mode }: { result: any; mode: Mode }) {
             <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3 dark:border-gray-700 dark:bg-gray-900/80">
               <p className="text-xs uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Source</p>
               <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-white">
-                {result?.filename ? "Pi camera" : "Uploaded image"}
+                {sourceLabel}
               </p>
             </div>
           </div>
@@ -798,6 +829,7 @@ function ResultCard({ result, mode }: { result: any; mode: Mode }) {
 // No MJPEG stream is consumed — keeps Pi cool.
 function useSnapshotSampler(active: boolean, sessionId: string) {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
   const [showLoader, setShowLoader] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -817,6 +849,7 @@ function useSnapshotSampler(active: boolean, sessionId: string) {
 
     if (!active) {
       setPhotoUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
+      setPhotoDataUrl(null);
       setShowLoader(false);
       return;
     }
@@ -835,8 +868,11 @@ function useSnapshotSampler(active: boolean, sessionId: string) {
         if (res.ok) {
           const blob = await res.blob();
           if (!mountedRef.current) return;
+          const dataUrl = await blobToDataUrl(blob);
+          if (!mountedRef.current) return;
           const url = URL.createObjectURL(blob);
           setPhotoUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return url; });
+          setPhotoDataUrl(dataUrl);
           setVersion((current) => current + 1);
           setShowLoader(false);
         }
@@ -854,7 +890,7 @@ function useSnapshotSampler(active: boolean, sessionId: string) {
     };
   }, [active, sessionId]);
 
-  return { photoUrl, version, showLoader };
+  return { photoUrl, photoDataUrl, version, showLoader };
 }
 
 function StepProgress({
@@ -964,6 +1000,7 @@ function DetectionTab({
   const { user, isGuest } = useAuth();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pushedDetectionsRef = useRef<Record<string, string | null>>({ animal: null, plant: null });
+  const autoDetectingRef = useRef(false);
 
   const status = statuses?.[mode] || null;
   const currentLiveResult = status?.last_detection || status?.last_result || null;
@@ -975,7 +1012,6 @@ function DetectionTab({
   const [uploadImage, setUploadImage] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [manualResult, setManualResult] = useState<any>(null);
-  const [forcedSample, setForcedSample] = useState<{ recordId: string; image: string } | null>(null);
   const [captureBusy, setCaptureBusy] = useState(false);
   const [detectBusy, setDetectBusy] = useState(false);
   const [sessionBusy, setSessionBusy] = useState(false);
@@ -997,25 +1033,13 @@ function DetectionTab({
     });
   }, [isGuest, mode, status]);
 
-  useEffect(() => {
-    setForcedSample(null);
-  }, [sharedSample.version]);
-
-  useEffect(() => {
-    const detection = status?.last_detection;
-    const recordId = detection?.record_id;
-    const image = detection?.image_b64;
-    if (!recordId || !image || forcedSample?.recordId === recordId) return;
-    setForcedSample({ recordId, image });
-  }, [forcedSample?.recordId, status?.last_detection]);
-
   const controlsLocked = captureBusy || detectBusy || sessionBusy;
   const showAutonomousOnly = ownedAutonomousRunning;
   const showManualStopOnly = ownedLiveSessionRunning && !showAutonomousOnly;
   const showIdleControls = !lockedByOther && !ownedLiveSessionRunning && !ownedAutonomousRunning;
   const bigBoxUpload = uploadImage || previewImage;
   const progressActive = ownedLiveSessionRunning || ownedAutonomousRunning;
-  const displayPhoto = forcedSample?.image || sharedSample.url;
+  const displayPhoto = sharedSample.url;
   const manualTotalSeconds = status?.duration_seconds || 600;
   const manualElapsedSeconds = Math.max(0, manualTotalSeconds - (status?.remaining_seconds || 0));
   const autonomousTotalSeconds = Math.max(1, Math.ceil((autonomousStatus?.total_duration_ms || 0) / 1000));
@@ -1023,6 +1047,14 @@ function DetectionTab({
   const progressTotalSeconds = ownedAutonomousRunning ? autonomousTotalSeconds : manualTotalSeconds;
   const progressElapsedSeconds = ownedAutonomousRunning ? autonomousElapsedSeconds : manualElapsedSeconds;
   const title = mode === "animal" ? "Animal Detection" : "Plant Disease Detection";
+  const activeModes = Array.from(
+    new Set<Mode>([
+      ...(statuses?.animal?.running && statuses?.animal?.owner ? ["animal" as const] : []),
+      ...(statuses?.plant?.running && statuses?.plant?.owner ? ["plant" as const] : []),
+      ...(ownedAutonomousRunning ? (["animal", "plant"] as const) : []),
+    ])
+  );
+  const activeModesKey = activeModes.join(",");
 
   useEffect(() => {
     if (!ownedLiveSessionRunning && !ownedAutonomousRunning) return;
@@ -1140,6 +1172,48 @@ function DetectionTab({
     }
   };
 
+  useEffect(() => {
+    if (!progressActive || !sharedSample.dataUrl || !activeModes.length) return;
+    if (autoDetectingRef.current) return;
+
+    autoDetectingRef.current = true;
+
+    const detectSample = async () => {
+      try {
+        const responses = await Promise.all(
+          activeModes.map(async (activeMode) => {
+            const endpoint =
+              activeMode === "animal" ? "/api/animal/detect-animal" : "/api/plant/detect-plant";
+            const response = await apiFetch(endpoint, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                image_base64: sharedSample.dataUrl,
+                user_id: user?.id || "guest",
+                session_id: sessionId,
+                source: "live",
+                save_only_relevant: true,
+              }),
+            });
+            const payload = await response.json();
+            return { activeMode, payload };
+          })
+        );
+
+        const currentModePayload = responses.find((item) => item.activeMode === mode)?.payload;
+        if (currentModePayload) {
+          setManualResult(currentModePayload);
+        }
+      } catch {
+        setManualResult({ success: false, error: "Auto detection sample failed." });
+      } finally {
+        autoDetectingRef.current = false;
+      }
+    };
+
+    void detectSample();
+  }, [activeModesKey, mode, progressActive, sessionId, sharedSample.dataUrl, sharedSample.version, user?.id]);
+
   const stopLiveDetection = async () => {
     setSessionBusy(true);
     try {
@@ -1169,9 +1243,8 @@ function DetectionTab({
               {title}
             </h2>
             <p className="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400 sm:text-base">
-              Start model detection from the Pi camera. The backend checks every 7th frame, while
-              the frontend refreshes the latest Pi snapshot every few seconds to stay responsive
-              without reopening the old laggy stream.
+              The Pi backend captures one still image every few seconds, the frontend shows that
+              exact image, and the active model modes run on that same sample.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -1181,7 +1254,7 @@ function DetectionTab({
               </span>
             ) : showManualStopOnly ? (
               <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
-                Live detection running
+                Auto detection running
               </span>
             ) : lockedByOther ? (
               <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
@@ -1224,9 +1297,8 @@ function DetectionTab({
             active={progressActive}
             photoUrl={displayPhoto}
             showLoader={progressActive && (!displayPhoto || sharedSample.loading)}
-            idleMessage={lockedByOther ? "Bot is in use by someone. Please try after sometime." : "Uploaded images are checked automatically. You can also use the Pi camera capture button or start live detection below."}
+            idleMessage={lockedByOther ? "Bot is in use by someone. Please try after sometime." : "Uploaded images are checked automatically. You can also use the Pi camera capture button or start auto detection below."}
             uploadedImage={progressActive ? null : bigBoxUpload}
-            highlight={Boolean(forcedSample)}
           />
         </div>
 
@@ -1269,7 +1341,7 @@ function DetectionTab({
                 ) : (
                   <AlertTriangle className="h-4 w-4" />
                 )}
-                Start Live Detection
+                Start Auto Detection
               </button>
               <button
                 onClick={resetState}
@@ -1315,9 +1387,9 @@ function DetectionTab({
             </p>
             <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-white">
               {showAutonomousOnly
-                ? `Shared with autonomous profile ${autonomousProfileName || ""}`.trim()
-                : liveSessionRunning
-                  ? "Live detection"
+                  ? `Shared with autonomous profile ${autonomousProfileName || ""}`.trim()
+                  : liveSessionRunning
+                  ? "Auto detection"
                   : "Capture or upload"}
             </p>
           </div>
@@ -1344,6 +1416,7 @@ export default function DetectionPage() {
   const sampled = useSnapshotSampler(sampleActive, sessionId);
   const sharedSample: SampleState = {
     url: sampled.photoUrl,
+    dataUrl: sampled.photoDataUrl,
     version: sampled.version,
     loading: sampled.showLoader,
   };
@@ -1384,8 +1457,7 @@ export default function DetectionPage() {
               AI Threat Detection
             </h1>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 sm:text-base">
-              Manual capture, manual live detection, and shared autonomous live monitoring from the
-              Pi camera.
+              Manual capture plus shared snapshot-based model detection from the Pi camera.
             </p>
           </div>
 
@@ -1400,13 +1472,13 @@ export default function DetectionPage() {
                 {autonomous?.running
                   ? "Autonomous detection is in control"
                   : statuses?.[tab]?.running
-                    ? "Manual live detection is active"
+                    ? "Manual auto detection is active"
                     : "Detection controls are ready"}
               </span>
             </div>
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Backend checks every {statuses?.[tab]?.frame_skip || 7}th frame. Frontend samples one
-              photo every {(SNAPSHOT_REFRESH_MS / 1000).toFixed(1)} seconds.
+              One shared Pi snapshot is sampled every {(SNAPSHOT_REFRESH_MS / 1000).toFixed(1)} seconds
+              and reused by the active model modes.
             </p>
           </div>
         </div>

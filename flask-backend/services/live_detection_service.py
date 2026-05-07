@@ -1,42 +1,21 @@
-import base64
-import os
 import threading
-import time
-import uuid
 from datetime import datetime, timedelta
 from typing import Any
 
 import cv2
-import numpy as np
 from flask import Response
 
-from database import COLLECTIONS, get_collection, limit_collection
-from services.buzzer_service import buzz
+from services.camera_service import capture_single_frame
 from services.session_lock_service import is_lock_owner
 from services.time_service import iso_ist, now_ist
 
 
-UPLOAD_FOLDER = "uploads"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
 SESSION_DURATION_SECONDS = 10 * 60
-FRAME_SKIP = 7
-CAPTURE_INTERVAL_SECONDS = 0.2
-SAVE_COOLDOWN_SECONDS = 8
+CAPTURE_INTERVAL_SECONDS = 2.5
 STREAM_BOUNDARY = b"--frame"
-DETECTION_HISTORY_LIMIT = 20
-LIVE_PREVIEW_JPEG_QUALITY = 82
-_PI_LIVE_SIZE = (960, 720)
 
 _lock = threading.RLock()
-_worker_thread: threading.Thread | None = None
 _flask_app = None
-_camera_handle = None
-_camera_kind: str | None = None
-_latest_frame: bytes | None = None
-_frame_counter = 0
-_animal_predictor = None
-_plant_predictor = None
 
 _states: dict[str, dict[str, Any]] = {
     "animal": {
@@ -89,240 +68,8 @@ def _shared_active() -> bool:
     return any(mode_state["running"] for mode_state in _states.values())
 
 
-def _active_owner_session_id() -> str | None:
-    for mode_state in _states.values():
-        if mode_state["running"]:
-            return mode_state.get("owner_session_id")
-    return None
-
-
-def _viewer_can_see(session_id: str | None) -> bool:
-    owner_session_id = _active_owner_session_id()
-    return bool(owner_session_id and session_id == owner_session_id and is_lock_owner(session_id))
-
-
-def _get_animal_predictor():
-    global _animal_predictor
-    if _animal_predictor is None:
-        from models.animal_main import predict as animal_predict
-
-        _animal_predictor = animal_predict
-    return _animal_predictor
-
-
-def _get_plant_predictor():
-    global _plant_predictor
-    if _plant_predictor is None:
-        from models.plant_main import predict as plant_predict
-
-        _plant_predictor = plant_predict
-    return _plant_predictor
-
-
-def _encode_frame(frame) -> bytes | None:
-    ok, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, LIVE_PREVIEW_JPEG_QUALITY])
-    if not ok:
-        return None
-    return buffer.tobytes()
-
-
-def _image_to_b64(frame) -> str:
-    encoded = _encode_frame(frame)
-    if not encoded:
-        return ""
-    return "data:image/jpeg;base64," + base64.b64encode(encoded).decode()
-
-
-def _open_camera() -> None:
-    global _camera_handle, _camera_kind
-
-    if _camera_handle is not None:
-        return
-
-    try:
-        from picamera2 import Picamera2
-        try:
-            from libcamera import Transform
-            transform = Transform(hflip=1, vflip=1)
-        except Exception:
-            transform = None
-
-        camera = Picamera2()
-        config_kwargs = {"main": {"size": _PI_LIVE_SIZE, "format": "BGR888"}}
-        if transform is not None:
-            config_kwargs["transform"] = transform
-        config = camera.create_video_configuration(**config_kwargs)
-        camera.configure(config)
-        camera.start()
-        time.sleep(0.4)
-        _camera_handle = camera
-        _camera_kind = "picamera2"
-        return
-    except Exception:
-        pass
-
-    fallback = cv2.VideoCapture(0)
-    fallback.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    fallback.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-    if not fallback.isOpened():
-        raise RuntimeError("Pi camera could not be opened")
-    _camera_handle = fallback
-    _camera_kind = "opencv"
-
-
-def _close_camera() -> None:
-    global _camera_handle, _camera_kind
-
-    if _camera_handle is None:
-        return
-
-    try:
-        if _camera_kind == "picamera2":
-            _camera_handle.stop()
-            _camera_handle.close()
-        else:
-            _camera_handle.release()
-    except Exception:
-        pass
-    finally:
-        _camera_handle = None
-        _camera_kind = None
-
-
-def _read_frame():
-    if _camera_handle is None:
-        _open_camera()
-
-    if _camera_kind == "picamera2":
-        frame = _camera_handle.capture_array()
-        if frame is None or getattr(frame, "size", 0) == 0:
-            raise RuntimeError("Pi camera returned an empty frame")
-        if len(frame.shape) == 3 and frame.shape[2] == 4:
-            return cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
-        return frame
-
-    ok, frame = _camera_handle.read()
-    if not ok:
-        raise RuntimeError("Failed to read a frame from the camera")
-    return frame
-
-
-def _parse_animal_result(result_text: str) -> dict[str, Any]:
-    threat = "Threat" in result_text
-    animal_name = "Unknown"
-    confidence = 0.0
-
-    if "Animal:" in result_text:
-        try:
-            animal_part = result_text.split("Animal:")[1]
-            animal_name = animal_part.split("(")[0].strip()
-            confidence = round(float(animal_part.split("(")[1].replace("%)", "")), 2)
-        except Exception:
-            confidence = 0.0
-    elif "(" in result_text and "%)" in result_text:
-        try:
-            confidence = round(float(result_text.split("(")[1].replace("%)", "")), 2)
-        except Exception:
-            confidence = 0.0
-
-    return {
-        "success": True,
-        "message": result_text,
-        "threat_detected": threat,
-        "animal_type": animal_name,
-        "confidence": confidence,
-        "relevant": threat,
-    }
-
-
-def _parse_plant_result(result_text: str, confidence: float) -> dict[str, Any]:
-    confidence_value = round(float(confidence * 100), 2)
-    relevant = "UNHEALTHY" in result_text
-    return {
-        "success": True,
-        "message": result_text,
-        "confidence": confidence_value,
-        "relevant": relevant,
-    }
-
-
-def _should_save(mode: str, current_time: datetime) -> bool:
-    last_saved = _states[mode].get("last_saved_at")
-    if not last_saved:
-        return True
-    return (current_time - last_saved).total_seconds() >= SAVE_COOLDOWN_SECONDS
-
-
-def _save_detection(mode: str, parsed: dict[str, Any], frame, current_time: datetime) -> dict[str, Any]:
-    if _flask_app is None:
-        raise RuntimeError("Live detection service is not bound to the Flask app")
-
-    filename = f"{mode}_live_{uuid.uuid4().hex[:10]}.jpg"
-    image_b64 = _image_to_b64(frame)
-    user_id = _states[mode]["user_id"]
-    owner_session_id = _states[mode].get("owner_session_id")
-
-    with _flask_app.app_context():
-        if mode == "animal":
-            collection = get_collection(COLLECTIONS["ANIMALS"])
-            inserted = collection.insert_one(
-                {
-                    "user_id": user_id,
-                    "threat_detected": parsed["threat_detected"],
-                    "animal_type": parsed["animal_type"],
-                    "confidence": parsed["confidence"],
-                    "filename": filename,
-                    "message": parsed["message"],
-                    "image_b64": image_b64,
-                    "timestamp": current_time,
-                    "owner_session_id": owner_session_id,
-                    "source": "live",
-                }
-            )
-            limit_collection(COLLECTIONS["ANIMALS"], DETECTION_HISTORY_LIMIT)
-            payload = {
-                "record_id": str(inserted.inserted_id),
-                "success": True,
-                "threat_detected": parsed["threat_detected"],
-                "animal_type": parsed["animal_type"],
-                "confidence": parsed["confidence"],
-                "filename": filename,
-                "message": parsed["message"],
-                "image_b64": image_b64,
-                "timestamp": _iso(current_time),
-                "source": "live",
-            }
-        else:
-            collection = get_collection(COLLECTIONS["PLANTS"])
-            inserted = collection.insert_one(
-                {
-                    "user_id": user_id,
-                    "result": parsed["message"],
-                    "confidence": parsed["confidence"],
-                    "filename": filename,
-                    "image_b64": image_b64,
-                    "timestamp": current_time,
-                    "owner_session_id": owner_session_id,
-                    "source": "live",
-                }
-            )
-            limit_collection(COLLECTIONS["PLANTS"], DETECTION_HISTORY_LIMIT)
-            payload = {
-                "record_id": str(inserted.inserted_id),
-                "success": True,
-                "confidence": parsed["confidence"],
-                "filename": filename,
-                "message": parsed["message"],
-                "image_b64": image_b64,
-                "timestamp": _iso(current_time),
-                "source": "live",
-            }
-
-    return payload
-
-
 def _refresh_expired_modes(current_time: datetime) -> None:
-    for mode, mode_state in _states.items():
+    for mode_state in _states.values():
         if mode_state["running"] and mode_state["ends_at"] and current_time >= mode_state["ends_at"]:
             mode_state["running"] = False
             mode_state["completed"] = True
@@ -330,105 +77,17 @@ def _refresh_expired_modes(current_time: datetime) -> None:
             mode_state["owner_session_id"] = None
 
 
-def _run_worker():
-    global _latest_frame, _worker_thread, _frame_counter
+def _viewer_can_access(session_id: str | None) -> bool:
+    if not session_id:
+        return False
+    return bool(is_lock_owner(session_id))
 
-    try:
-        _open_camera()
-    except Exception as exc:
-        with _lock:
-            for mode_state in _states.values():
-                if mode_state["running"]:
-                    mode_state["running"] = False
-                    mode_state["error"] = str(exc)
-                    mode_state["completed"] = False
-        return
 
-    try:
-        while True:
-            current_time = _now()
-            with _lock:
-                _refresh_expired_modes(current_time)
-                active_modes = [mode for mode, state in _states.items() if state["running"]]
-
-            if not active_modes:
-                break
-
-            try:
-                frame = _read_frame()
-            except Exception as exc:
-                with _lock:
-                    for mode in active_modes:
-                        _states[mode]["running"] = False
-                        _states[mode]["error"] = str(exc)
-                break
-
-            if frame is None or getattr(frame, "size", 0) == 0:
-                with _lock:
-                    for mode in active_modes:
-                        _states[mode]["error"] = "Camera returned an empty frame"
-                time.sleep(CAPTURE_INTERVAL_SECONDS)
-                continue
-
-            display_frame = frame.copy()
-            encoded_preview = _encode_frame(display_frame)
-            if encoded_preview:
-                with _lock:
-                    _latest_frame = encoded_preview
-
-            _frame_counter += 1
-            if _frame_counter % FRAME_SKIP != 0:
-                time.sleep(CAPTURE_INTERVAL_SECONDS)
-                continue
-
-            temp_filename = f"live_session_{uuid.uuid4().hex[:10]}.jpg"
-            temp_path = os.path.join(UPLOAD_FOLDER, temp_filename)
-            cv2.imwrite(temp_path, frame)
-
-            try:
-                for mode in active_modes:
-                    parsed: dict[str, Any]
-                    if mode == "animal":
-                        parsed = _parse_animal_result(_get_animal_predictor()(temp_path))
-                    else:
-                        plant_message, plant_confidence = _get_plant_predictor()(temp_path)
-                        parsed = _parse_plant_result(plant_message, plant_confidence)
-
-                    with _lock:
-                        _states[mode]["last_result"] = {
-                            **parsed,
-                            "timestamp": _iso(current_time),
-                        }
-                        _states[mode]["last_inference_at"] = current_time
-
-                    if not parsed["relevant"]:
-                        continue
-
-                    with _lock:
-                        can_save = _should_save(mode, current_time)
-
-                    if not can_save:
-                        continue
-
-                    saved = _save_detection(mode, parsed, frame, current_time)
-                    if _states[mode].get("owner_session_id"):
-                        buzz(2)
-                    with _lock:
-                        _states[mode]["last_detection"] = saved
-                        _states[mode]["last_saved_at"] = current_time
-                        _states[mode]["detection_count"] += 1
-            finally:
-                try:
-                    if os.path.exists(temp_path):
-                        os.remove(temp_path)
-                except Exception:
-                    pass
-
-            time.sleep(CAPTURE_INTERVAL_SECONDS)
-    finally:
-        _close_camera()
-        with _lock:
-            _worker_thread = None
+def _encode_frame(frame) -> bytes | None:
+    ok, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 88])
+    if not ok:
+        return None
+    return buffer.tobytes()
 
 
 def start_detection(
@@ -437,13 +96,12 @@ def start_detection(
     duration_seconds: int | None = SESSION_DURATION_SECONDS,
     owner_session_id: str | None = None,
 ) -> dict[str, Any]:
-    global _worker_thread, _frame_counter
-
     if mode not in _states:
         raise ValueError("Invalid detection mode")
 
     current_time = _now()
     with _lock:
+        _refresh_expired_modes(current_time)
         _states[mode]["running"] = True
         _states[mode]["completed"] = False
         _states[mode]["started_at"] = current_time
@@ -458,14 +116,6 @@ def start_detection(
         _states[mode]["last_saved_at"] = None
         _states[mode]["detection_count"] = 0
 
-        should_start_thread = _worker_thread is None or not _worker_thread.is_alive()
-        if should_start_thread:
-            _frame_counter = FRAME_SKIP - 1
-
-    if should_start_thread:
-        _worker_thread = threading.Thread(target=_run_worker, name="live-detection-worker", daemon=True)
-        _worker_thread.start()
-
     return get_detection_status(mode, owner_session_id)
 
 
@@ -475,6 +125,7 @@ def stop_detection(mode: str, owner_session_id: str | None = None) -> dict[str, 
 
     current_time = _now()
     with _lock:
+        _refresh_expired_modes(current_time)
         targets = list(_states.keys()) if mode == "all" else [mode]
         for target in targets:
             if owner_session_id and _states[target].get("owner_session_id") != owner_session_id:
@@ -487,9 +138,40 @@ def stop_detection(mode: str, owner_session_id: str | None = None) -> dict[str, 
     return get_all_detection_status(owner_session_id)
 
 
+def record_detection_result(
+    mode: str,
+    payload: dict[str, Any],
+    owner_session_id: str | None = None,
+    stored: bool = False,
+) -> None:
+    if mode not in _states:
+        return
+
+    current_time = _now()
+    with _lock:
+        _refresh_expired_modes(current_time)
+        mode_state = _states[mode]
+        if not mode_state["running"]:
+            return
+        if owner_session_id and mode_state.get("owner_session_id") != owner_session_id:
+            return
+
+        result_payload = dict(payload)
+        if not stored:
+            result_payload["image_b64"] = ""
+        mode_state["last_result"] = result_payload
+        mode_state["last_inference_at"] = current_time
+
+        if stored:
+            mode_state["last_detection"] = result_payload
+            mode_state["last_saved_at"] = current_time
+            mode_state["detection_count"] += 1
+
+
 def update_owner_user_id(owner_session_id: str | None, user_id: str) -> None:
     if not owner_session_id or not user_id:
         return
+
     with _lock:
         for mode_state in _states.values():
             if mode_state.get("owner_session_id") == owner_session_id:
@@ -542,8 +224,9 @@ def get_detection_status(mode: str, viewer_session_id: str | None = None) -> dic
         "error": mode_state["error"],
         "stream_active": shared_active,
         "active_modes": active_modes,
-        "frame_skip": FRAME_SKIP,
+        "frame_skip": 1,
         "duration_seconds": duration_seconds,
+        "capture_interval_seconds": CAPTURE_INTERVAL_SECONDS,
         "owner": owner,
         "blocked": mode_state["running"] and not owner,
     }
@@ -558,50 +241,34 @@ def get_all_detection_status(viewer_session_id: str | None = None) -> dict[str, 
 
 
 def frame_stream_response(viewer_session_id: str | None = None):
-    def generator():
-        while True:
-            with _lock:
-                frame = _latest_frame if _viewer_can_see(viewer_session_id) else None
-                active = _shared_active()
-
-            if frame is not None:
-                yield (
-                    STREAM_BOUNDARY
-                    + b"\r\nContent-Type: image/jpeg\r\nContent-Length: "
-                    + str(len(frame)).encode()
-                    + b"\r\n\r\n"
-                    + frame
-                    + b"\r\n"
-                )
-
-            if not active and frame is None:
-                time.sleep(0.2)
-            else:
-                time.sleep(0.1)
-
-    return Response(generator(), mimetype="multipart/x-mixed-replace; boundary=frame")
+    return Response(
+        "Live stream mode has been removed. Use /api/auto/snapshot polling instead.",
+        status=410,
+        mimetype="text/plain",
+    )
 
 
 def frame_snapshot_response(viewer_session_id: str | None = None):
+    current_time = _now()
     with _lock:
-        frame = _latest_frame if _viewer_can_see(viewer_session_id) else None
+        _refresh_expired_modes(current_time)
         active = _shared_active()
 
-    if frame is None:
-        status = 204 if active else 404
-        return Response(status=status)
+    if not active:
+        return Response(status=204)
 
-    return Response(frame, mimetype="image/jpeg")
+    if not _viewer_can_access(viewer_session_id):
+        return Response(status=423)
+
+    try:
+        frame, _ = capture_single_frame()
+        encoded = _encode_frame(frame)
+        if not encoded:
+            return Response(status=500)
+        return Response(encoded, mimetype="image/jpeg")
+    except Exception as exc:
+        return Response(str(exc), status=500, mimetype="text/plain")
 
 
 def capture_cached_frame(viewer_session_id: str | None = None):
-    with _lock:
-        frame = _latest_frame if _viewer_can_see(viewer_session_id) else None
-
-    if frame is None:
-        return None
-
-    decoded = cv2.imdecode(np.frombuffer(frame, dtype=np.uint8), cv2.IMREAD_COLOR)
-    if decoded is None or getattr(decoded, "size", 0) == 0:
-        return None
-    return decoded.copy()
+    return None

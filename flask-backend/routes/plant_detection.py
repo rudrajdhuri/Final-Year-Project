@@ -9,6 +9,7 @@ from flask import Blueprint, jsonify, request, send_from_directory
 from database import COLLECTIONS, get_collection, limit_collection
 from services.buzzer_service import buzz
 from services.camera_service import capture_single_frame
+from services.live_detection_service import record_detection_result
 from services.time_service import iso_ist, now_ist
 
 
@@ -43,7 +44,7 @@ def _image_to_b64(filepath: str, max_size: int = 400) -> str:
         return ""
 
 
-def _save_and_cleanup(user_id, result_text, confidence_value, filepath, filename, owner_session_id=None):
+def _save_and_cleanup(user_id, result_text, confidence_value, filepath, filename, owner_session_id=None, source="camera"):
     image_b64 = _image_to_b64(filepath)
     timestamp = now_ist()
     plant_col = get_collection(COLLECTIONS["PLANTS"])
@@ -56,7 +57,7 @@ def _save_and_cleanup(user_id, result_text, confidence_value, filepath, filename
             "image_b64": image_b64,
             "timestamp": timestamp,
             "owner_session_id": owner_session_id,
-            "source": "camera",
+            "source": source,
         }
     )
     limit_collection(COLLECTIONS["PLANTS"])
@@ -70,32 +71,47 @@ def _save_and_cleanup(user_id, result_text, confidence_value, filepath, filename
     return image_b64, timestamp
 
 
-def _save_frame_and_predict(image, user_id: str, filename_prefix: str, owner_session_id=None):
+def _save_frame_and_predict(image, user_id: str, filename_prefix: str, owner_session_id=None, source="camera", save_only_relevant=False):
     filename = f"{filename_prefix}_{uuid.uuid4().hex[:10]}.jpg"
     filepath = os.path.join(UPLOAD_FOLDER, filename)
     cv2.imwrite(filepath, image)
 
     result_text, confidence = _get_predictor()(filepath)
     confidence_value = round(float(confidence * 100), 2)
-    image_b64, timestamp = _save_and_cleanup(
-        user_id,
-        result_text,
-        confidence_value,
-        filepath,
-        filename,
-        owner_session_id,
-    )
+    relevant = "UNHEALTHY" in result_text.upper()
+    should_save = relevant or not save_only_relevant
 
-    return {
+    if should_save:
+        image_b64, timestamp = _save_and_cleanup(
+            user_id,
+            result_text,
+            confidence_value,
+            filepath,
+            filename,
+            owner_session_id,
+            source,
+        )
+    else:
+        image_b64 = _image_to_b64(filepath)
+        timestamp = now_ist()
+        try:
+            if os.path.exists(filepath):
+                os.remove(filepath)
+        except Exception:
+            pass
+
+    payload = {
         "success": True,
         "message": result_text,
         "confidence": confidence_value,
-        "filename": filename,
+        "filename": filename if should_save else None,
         "image_b64": image_b64,
-        "source": "camera",
+        "source": source,
         "timestamp": iso_ist(timestamp),
-        "relevant": "UNHEALTHY" in result_text.upper(),
+        "relevant": relevant,
     }
+    record_detection_result("plant", payload, owner_session_id=owner_session_id, stored=should_save)
+    return payload
 
 
 @plant_detection_bp.route("/detect-plant", methods=["POST"])
@@ -116,7 +132,14 @@ def detect_plant():
 
         user_id = request.json.get("user_id", "guest")
         owner_session_id = request.json.get("session_id")
-        payload = _save_frame_and_predict(image, user_id, "plant_upload", owner_session_id)
+        payload = _save_frame_and_predict(
+            image,
+            user_id,
+            "plant_upload",
+            owner_session_id,
+            source=request.json.get("source", "upload"),
+            save_only_relevant=bool(request.json.get("save_only_relevant")),
+        )
         if payload.get("relevant"):
             buzz(2)
         return jsonify(payload)
@@ -130,7 +153,7 @@ def capture_camera():
         user_id = request.json.get("user_id", "guest") if request.is_json and request.json else "guest"
         owner_session_id = request.json.get("session_id") if request.is_json and request.json else None
         frame, source = capture_single_frame()
-        payload = _save_frame_and_predict(frame, user_id, "plant_camera", owner_session_id)
+        payload = _save_frame_and_predict(frame, user_id, "plant_camera", owner_session_id, source="camera")
         payload["camera_source"] = source
         if payload.get("relevant"):
             buzz(2)
