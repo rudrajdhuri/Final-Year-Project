@@ -141,7 +141,7 @@ def _open_camera() -> None:
         from picamera2 import Picamera2
 
         camera = Picamera2()
-        config = camera.create_video_configuration(main={"size": (640, 480), "format": "RGB888"})
+        config = camera.create_video_configuration(main={"size": (640, 480), "format": "BGR888"})
         camera.configure(config)
         camera.start()
         time.sleep(0.4)
@@ -184,8 +184,7 @@ def _read_frame():
         _open_camera()
 
     if _camera_kind == "picamera2":
-        frame = _camera_handle.capture_array()
-        return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        return _camera_handle.capture_array()
 
     ok, frame = _camera_handle.read()
     if not ok:

@@ -22,7 +22,7 @@ def _open_camera():
         from picamera2 import Picamera2
 
         camera = Picamera2()
-        config = camera.create_video_configuration(main={"size": (640, 480), "format": "RGB888"})
+        config = camera.create_video_configuration(main={"size": (640, 480), "format": "BGR888"})
         camera.configure(config)
         camera.start()
         time.sleep(0.2)
@@ -80,8 +80,7 @@ def capture_single_frame():
 
         try:
             if _camera_kind == "picamera2":
-                frame = _camera_handle.capture_array()
-                output = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                output = _camera_handle.capture_array()
                 _last_opened_at = time.time()
                 _schedule_close()
                 return output, "picamera2"

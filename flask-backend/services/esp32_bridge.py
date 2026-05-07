@@ -208,6 +208,7 @@ from typing import Any
 from websockets.client import connect
 
 from database import COLLECTIONS, get_collection, limit_collection
+from services.autonomous_service import is_manual_recording_active
 from services.buzzer_service import buzz
 from services.session_lock_service import get_active_lock_owner
 from services.runtime_state import get_runtime_state, is_arm_active, is_bot_running
@@ -295,7 +296,9 @@ def _persist_sensor_reading(reading: dict[str, Any]):
     owner_user_id = lock_owner.get("owner_user_id") or "guest"
     current_time = reading["timestamp"]
 
-    if is_arm_active():
+    allow_sensor_capture = is_arm_active() and not is_manual_recording_active()
+
+    if allow_sensor_capture:
         with _flask_app.app_context():
             sensor_col = get_collection(COLLECTIONS["SENSORS"])
             sensor_col.insert_one(

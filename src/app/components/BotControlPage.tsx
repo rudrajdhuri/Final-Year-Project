@@ -22,8 +22,8 @@ const ESP32_WS_URL = `ws://${ESP32_HOST}/CarInput`;
 const AUTONOMOUS_PWM = 150;
 
 const COMMANDS = {
-  F: "MoveCar,2",
-  B: "MoveCar,1",
+  F: "MoveCar,1",
+  B: "MoveCar,2",
   L: "MoveCar,4",
   R: "MoveCar,3",
   S: "MoveCar,0",
@@ -590,6 +590,7 @@ function ControlSurface({
   controlsBlocked = false,
   hideSideInfoOnMobile = false,
   hideSpeedCard = false,
+  allowServo = true,
 }: {
   connected: boolean;
   canAdjustSpeed: boolean;
@@ -600,6 +601,7 @@ function ControlSurface({
   controlsBlocked?: boolean;
   hideSideInfoOnMobile?: boolean;
   hideSpeedCard?: boolean;
+  allowServo?: boolean;
 }) {
   const actionDisabled = !connected || controlsBlocked;
 
@@ -674,17 +676,21 @@ function ControlSurface({
             >
               ↓
             </DirectionButton>
-            <button
-              onClick={() => void sendCommand("SERVO")}
-              disabled={actionDisabled || lastCommand !== "S"}
-              className={`flex h-[4.7rem] w-[4.7rem] items-center justify-center rounded-3xl border text-sm font-semibold transition ${
-                actionDisabled || lastCommand !== "S"
-                  ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-300 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-700"
-                  : "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300 dark:hover:bg-emerald-500/20"
-              }`}
-            >
-              Arm
-            </button>
+            {allowServo ? (
+              <button
+                onClick={() => void sendCommand("SERVO")}
+                disabled={actionDisabled || lastCommand !== "S"}
+                className={`flex h-[4.7rem] w-[4.7rem] items-center justify-center rounded-3xl border text-sm font-semibold transition ${
+                  actionDisabled || lastCommand !== "S"
+                    ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-300 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-700"
+                    : "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300 dark:hover:bg-emerald-500/20"
+                }`}
+              >
+                Arm
+              </button>
+            ) : (
+              <div className="h-[4.7rem] w-[4.7rem]" />
+            )}
           </div>
         </div>
 
@@ -697,12 +703,14 @@ function ControlSurface({
               disabled={actionDisabled}
               variant="danger"
             />
-            <MobileCircleButton
-              label="Arm"
-              onClick={() => void sendCommand("SERVO")}
-              disabled={actionDisabled || lastCommand !== "S"}
-              variant="emerald"
-            />
+            {allowServo ? (
+              <MobileCircleButton
+                label="Arm"
+                onClick={() => void sendCommand("SERVO")}
+                disabled={actionDisabled || lastCommand !== "S"}
+                variant="emerald"
+              />
+            ) : null}
           </div>
         </div>
       </div>

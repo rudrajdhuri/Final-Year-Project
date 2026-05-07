@@ -32,7 +32,7 @@ const NAV = [
   { icon: History, label: "History", href: "/history" },
   { icon: Gamepad2, label: "Bot Control", href: "/bot-control" },
   { icon: Info, label: "About Us", href: "/about-us" },
-  // { icon: Compass, label: "Explore More", href: "/explore-more" },
+  { icon: Compass, label: "Explore More", href: "/explore-more" },
 ];
 
 export default function Sidebar({ onMobileClose }: { onMobileClose?: () => void }) {

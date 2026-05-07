@@ -24,8 +24,8 @@ PROFILE_LIMIT = 10
 ESP32_RESPONSE_TIMEOUT = 4.0
 
 COMMAND_TO_VALUE = {
-    "F": 2,
-    "B": 1,
+    "F": 1,
+    "B": 2,
     "L": 4,
     "R": 3,
     "S": 0,
@@ -452,6 +452,11 @@ def get_manual_recording_status() -> dict[str, Any]:
         "segment_count": len(segments),
         "total_duration_ms": total_ms,
     }
+
+
+def is_manual_recording_active() -> bool:
+    with _state_lock:
+        return bool(_recording_state["active"])
 
 
 def _serialize_profile(row: dict[str, Any]) -> dict[str, Any]:
