@@ -652,6 +652,7 @@ import { apiFetch, getApiUrl } from "@/lib/api";
 import { classifyPlantResult } from "@/lib/plantResult";
 
 type Mode = "animal" | "plant";
+const SNAPSHOT_REFRESH_MS = 2500;
 
 type DetectionStatus = {
   mode: Mode;
@@ -847,7 +848,7 @@ function useSnapshotSampler(active: boolean, sessionId: string) {
     };
 
     void fetchPhoto();
-    intervalRef.current = setInterval(() => void fetchPhoto(), 30000);
+    intervalRef.current = setInterval(() => void fetchPhoto(), SNAPSHOT_REFRESH_MS);
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
@@ -874,7 +875,7 @@ function StepProgress({
   return (
     <div className="mt-5 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-950/60">
       <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
-        <span>30 sec samples</span>
+        <span>{`${(SNAPSHOT_REFRESH_MS / 1000).toFixed(1)} sec samples`}</span>
         <span>{currentStep} / {stepCount}</span>
       </div>
       <div className="h-2.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-800">
@@ -1169,7 +1170,8 @@ function DetectionTab({
             </h2>
             <p className="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400 sm:text-base">
               Start model detection from the Pi camera. The backend checks every 7th frame, while
-              the frontend keeps one selected photo visible and refreshes it every 30 seconds.
+              the frontend refreshes the latest Pi snapshot every few seconds to stay responsive
+              without reopening the old laggy stream.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -1404,7 +1406,7 @@ export default function DetectionPage() {
             </div>
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
               Backend checks every {statuses?.[tab]?.frame_skip || 7}th frame. Frontend samples one
-              photo every 30 seconds.
+              photo every {(SNAPSHOT_REFRESH_MS / 1000).toFixed(1)} seconds.
             </p>
           </div>
         </div>

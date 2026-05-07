@@ -105,13 +105,26 @@
 import threading
 import time
 import cv2
-# from libcamera import ColorSpace  # Add this import for colorspace fix
 
 _camera_lock = threading.Lock()
 _camera_handle = None
 _camera_kind = None
 _last_opened_at = 0.0
 _CAMERA_KEEPALIVE_SECONDS = 12
+_PI_CAPTURE_SIZE = (1280, 720)
+
+
+def _normalize_picamera_frame(frame):
+    if frame is None or getattr(frame, "size", 0) == 0:
+        raise RuntimeError("Pi camera returned an empty frame")
+
+    if len(frame.shape) == 3 and frame.shape[2] == 4:
+        return cv2.cvtColor(frame, cv2.COLOR_RGBA2BGR)
+
+    if len(frame.shape) == 3 and frame.shape[2] == 3:
+        return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+
+    return frame
 
 
 def _open_camera():
@@ -125,14 +138,12 @@ def _open_camera():
         from picamera2 import Picamera2
 
         camera = Picamera2()
-        # Fixed config: Explicit colorspace to prevent blue tint
-        config = camera.create_video_configuration(
-            main={"size": (640, 480), "format": "BGR888"},
-            # colour_space=ColorSpace.Srgb  # Ensures proper color interpretation
+        config = camera.create_still_configuration(
+            main={"size": _PI_CAPTURE_SIZE, "format": "RGB888"},
         )
         camera.configure(config)
         camera.start()
-        time.sleep(0.2)
+        time.sleep(0.6)
         _camera_handle = camera
         _camera_kind = "picamera2"
         _last_opened_at = time.time()
@@ -187,9 +198,7 @@ def capture_single_frame():
 
         try:
             if _camera_kind == "picamera2":
-                output = _camera_handle.capture_array()
-                # Fallback channel swap if colorspace fix insufficient
-                # output[:,:,0], output[:,:,2] = output[:,:,2].copy(), output[:,:,0].copy()
+                output = _normalize_picamera_frame(_camera_handle.capture_array())
                 _last_opened_at = time.time()
                 _schedule_close()
                 return output, "picamera2"

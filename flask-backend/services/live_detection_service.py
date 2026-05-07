@@ -25,6 +25,8 @@ CAPTURE_INTERVAL_SECONDS = 0.2
 SAVE_COOLDOWN_SECONDS = 8
 STREAM_BOUNDARY = b"--frame"
 DETECTION_HISTORY_LIMIT = 20
+LIVE_PREVIEW_JPEG_QUALITY = 82
+_PI_LIVE_SIZE = (960, 720)
 
 _lock = threading.RLock()
 _worker_thread: threading.Thread | None = None
@@ -118,7 +120,7 @@ def _get_plant_predictor():
 
 
 def _encode_frame(frame) -> bytes | None:
-    ok, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 72])
+    ok, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, LIVE_PREVIEW_JPEG_QUALITY])
     if not ok:
         return None
     return buffer.tobytes()
@@ -141,7 +143,7 @@ def _open_camera() -> None:
         from picamera2 import Picamera2
 
         camera = Picamera2()
-        config = camera.create_video_configuration(main={"size": (640, 480), "format": "BGR888"})
+        config = camera.create_video_configuration(main={"size": _PI_LIVE_SIZE, "format": "RGB888"})
         camera.configure(config)
         camera.start()
         time.sleep(0.4)
@@ -185,21 +187,16 @@ def _read_frame():
 
     if _camera_kind == "picamera2":
         frame = _camera_handle.capture_array()
-        return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)  # ← ADD this line
+        if frame is None or getattr(frame, "size", 0) == 0:
+            raise RuntimeError("Pi camera returned an empty frame")
+        if len(frame.shape) == 3 and frame.shape[2] == 4:
+            return cv2.cvtColor(frame, cv2.COLOR_RGBA2BGR)
+        return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
     ok, frame = _camera_handle.read()
     if not ok:
         raise RuntimeError("Failed to read a frame from the camera")
     return frame
-
-
-def _annotate_frame(frame, title: str, detail: str, color: tuple[int, int, int]):
-    annotated = frame.copy()
-    cv2.rectangle(annotated, (16, 16), (624, 104), (18, 24, 38), -1)
-    cv2.rectangle(annotated, (16, 16), (624, 104), color, 2)
-    cv2.putText(annotated, title, (32, 52), cv2.FONT_HERSHEY_SIMPLEX, 0.85, color, 2, cv2.LINE_AA)
-    cv2.putText(annotated, detail, (32, 84), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (240, 248, 255), 2, cv2.LINE_AA)
-    return annotated
 
 
 def _parse_animal_result(result_text: str) -> dict[str, Any]:
@@ -380,7 +377,6 @@ def _run_worker():
             temp_path = os.path.join(UPLOAD_FOLDER, temp_filename)
             cv2.imwrite(temp_path, frame)
 
-            annotations: list[tuple[str, str, tuple[int, int, int]]] = []
             try:
                 for mode in active_modes:
                     parsed: dict[str, Any]
@@ -406,39 +402,13 @@ def _run_worker():
                     if not can_save:
                         continue
 
-                    if mode == "animal":
-                        label = parsed.get("animal_type") or "Animal"
-                        annotated = _annotate_frame(
-                            frame,
-                            "Animal threat detected",
-                            f"{label} | {parsed['confidence']}%",
-                            (35, 35, 220),
-                        )
-                        annotations.append(("Animal threat", label, (35, 35, 220)))
-                    else:
-                        annotated = _annotate_frame(
-                            frame,
-                            "Plant disease detected",
-                            f"Confidence {parsed['confidence']}%",
-                            (0, 145, 255),
-                        )
-                        annotations.append(("Plant disease", parsed["message"], (0, 145, 255)))
-
-                    saved = _save_detection(mode, parsed, annotated, current_time)
+                    saved = _save_detection(mode, parsed, frame, current_time)
                     if _states[mode].get("owner_session_id"):
                         buzz(2)
                     with _lock:
                         _states[mode]["last_detection"] = saved
                         _states[mode]["last_saved_at"] = current_time
                         _states[mode]["detection_count"] += 1
-
-                if annotations:
-                    for title, detail, color in annotations:
-                        display_frame = _annotate_frame(display_frame, title, detail[:60], color)
-                    encoded_annotated = _encode_frame(display_frame)
-                    if encoded_annotated:
-                        with _lock:
-                            _latest_frame = encoded_annotated
             finally:
                 try:
                     if os.path.exists(temp_path):

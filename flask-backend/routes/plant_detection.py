@@ -9,7 +9,6 @@ from flask import Blueprint, jsonify, request, send_from_directory
 from database import COLLECTIONS, get_collection, limit_collection
 from services.buzzer_service import buzz
 from services.camera_service import capture_single_frame
-from services.live_detection_service import capture_cached_frame
 from services.time_service import iso_ist, now_ist
 
 
@@ -130,10 +129,7 @@ def capture_camera():
     try:
         user_id = request.json.get("user_id", "guest") if request.is_json and request.json else "guest"
         owner_session_id = request.json.get("session_id") if request.is_json and request.json else None
-        frame = capture_cached_frame(owner_session_id)
-        source = "shared-live-cache" if frame is not None else None
-        if frame is None:
-            frame, source = capture_single_frame()
+        frame, source = capture_single_frame()
         payload = _save_frame_and_predict(frame, user_id, "plant_camera", owner_session_id)
         payload["camera_source"] = source
         if payload.get("relevant"):
