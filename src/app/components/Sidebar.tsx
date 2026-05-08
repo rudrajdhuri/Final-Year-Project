@@ -26,13 +26,13 @@ import { getClientSessionId } from "./AuthContext";
 const NAV = [
   { icon: Home, label: "Dashboard", href: "/" },
   { icon: Bell, label: "Notifications", href: "/notifications" },
-  { icon: MapPin, label: "Bot Location", href: "/bot-location" },
+  // { icon: MapPin, label: "Bot Location", href: "/bot-location" },
   { icon: FileStack, label: "Soil Sensor Readings", href: "/soil-sensor-readings" },
   { icon: ShieldAlert, label: "AI Threat Detection", href: "/ai-threat-det" },
   { icon: History, label: "History", href: "/history" },
   { icon: Gamepad2, label: "Bot Control", href: "/bot-control" },
   { icon: Info, label: "About Us", href: "/about-us" },
-  { icon: Compass, label: "Explore More", href: "/explore-more" },
+  // { icon: Compass, label: "Explore More", href: "/explore-more" },
 ];
 
 export default function Sidebar({ onMobileClose }: { onMobileClose?: () => void }) {
