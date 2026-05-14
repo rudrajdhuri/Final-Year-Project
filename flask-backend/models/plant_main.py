@@ -409,13 +409,250 @@
 
 
 
+
+
+
+
+# import torch
+# import timm
+# import torch.nn.functional as F
+# from torchvision import transforms
+# from PIL import Image
+# import cv2
+# import numpy as np
+
+# # -------------------------------
+# # Device
+# # -------------------------------
+# device = torch.device("cpu")
+# print("Using device:", device)
+
+# # -----------------------------
+# # Human Face Filter (OpenCV) — Pi-cam hardened
+# # -----------------------------
+# face_cascade = cv2.CascadeClassifier('/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml')
+
+# def has_human_face(image_path):
+#     """
+#     Returns True ONLY if a high-confidence human face is detected.
+
+#     Root cause of plant false positives:
+#       Pi-cam images have high contrast + noise. Leaf textures (veins, circular
+#       blobs, round leaf edges) trigger haarcascade at low minNeighbors.
+
+#     Fixes applied:
+#     - scaleFactor 1.05 → 1.08
+#     - minNeighbors 8 → 14     ← biggest fix; needs many overlapping rectangles
+#     - minSize (80,80) → (100,100)
+#     - Aspect-ratio guard       ← leaf patches are rarely square
+#     - Skin-tone HSV guard      ← green/brown regions rejected as non-skin
+#     """
+#     img = cv2.imread(image_path)
+#     if img is None:
+#         return False
+
+#     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+#     gray = cv2.equalizeHist(gray)   # normalise Pi-cam exposure variations
+
+#     faces = face_cascade.detectMultiScale(
+#         gray,
+#         scaleFactor=1.08,
+#         minNeighbors=18,
+#         minSize=(100, 100)
+#     )
+
+#     if len(faces) == 0:
+#         return False
+
+#     h_img, w_img = img.shape[:2]
+#     img_area = h_img * w_img
+
+#     for (x, y, w, h) in faces:
+#         # 1. Aspect-ratio guard
+#         aspect = w / float(h)
+#         if aspect < 0.75 or aspect > 1.35:
+#             continue
+
+#         # 2. Size sanity
+#         if (w * h) > 0.60 * img_area:
+#             continue
+
+#         roi = img[y:y+h, x:x+w]
+#         hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+
+#         # 3. Fur/animal color rejection (golden/yellow fur)
+#         lower_fur = np.array([15, 80,  80],  dtype=np.uint8)
+#         upper_fur = np.array([35, 255, 255], dtype=np.uint8)
+#         fur_mask  = cv2.inRange(hsv, lower_fur, upper_fur)
+#         fur_ratio = cv2.countNonZero(fur_mask) / float(w * h)
+#         if fur_ratio > 0.35:
+#             continue
+
+#         # 4. Skin-tone guard
+#         lower_skin = np.array([0,  20,  60], dtype=np.uint8)
+#         upper_skin = np.array([18, 150, 255], dtype=np.uint8)
+#         mask = cv2.inRange(hsv, lower_skin, upper_skin)
+#         skin_ratio = cv2.countNonZero(mask) / float(w * h)
+#         if skin_ratio < 0.20:
+#             continue
+
+#         return True
+
+#     return False
+
+# # -------------------------------
+# # Disease Classes (38)
+# # -------------------------------
+# disease_classes = [
+# 'Apple___Apple_scab',
+# 'Apple___Black_rot',
+# 'Apple___Cedar_apple_rust',
+# 'Apple___healthy',
+# 'Blueberry___healthy',
+# 'Cherry_(including_sour)___Powdery_mildew',
+# 'Cherry_(including_sour)___healthy',
+# 'Corn_(maize)___Cercospora_leaf_spot Gray_leaf_spot',
+# 'Corn_(maize)___Common_rust_',
+# 'Corn_(maize)___Northern_Leaf_Blight',
+# 'Corn_(maize)___healthy',
+# 'Grape___Black_rot',
+# 'Grape___Esca_(Black_Measles)',
+# 'Grape___Leaf_blight_(Isariopsis_Leaf_Spot)',
+# 'Grape___healthy',
+# 'Orange___Haunglongbing_(Citrus_greening)',
+# 'Peach___Bacterial_spot',
+# 'Peach___healthy',
+# 'Pepper,_bell___Bacterial_spot',
+# 'Pepper,_bell___healthy',
+# 'Potato___Early_blight',
+# 'Potato___Late_blight',
+# 'Potato___healthy',
+# 'Raspberry___healthy',
+# 'Soybean___healthy',
+# 'Squash___Powdery_mildew',
+# 'Strawberry___Leaf_scorch',
+# 'Strawberry___healthy',
+# 'Tomato___Bacterial_spot',
+# 'Tomato___Early_blight',
+# 'Tomato___Late_blight',
+# 'Tomato___Leaf_Mold',
+# 'Tomato___Septoria_leaf_spot',
+# 'Tomato___Spider_mites Two-spotted_spider_mite',
+# 'Tomato___Target_Spot',
+# 'Tomato___Tomato_Yellow_Leaf_Curl_Virus',
+# 'Tomato___Tomato_mosaic_virus',
+# 'Tomato___healthy'
+# ]
+
+# # -------------------------------
+# # Load Models
+# # -------------------------------
+# stage1_model = timm.create_model("efficientnet_b0", pretrained=False, num_classes=2)
+# stage1_model.load_state_dict(torch.load("models/models_stored/plant_vs_nonplant.pth", map_location=device))
+# stage1_model.to(device).eval()
+
+# stage2_model = timm.create_model("efficientnet_b0", pretrained=False, num_classes=38)
+# stage2_model.load_state_dict(torch.load("models/models_stored/plant_disease_38.pth", map_location=device))
+# stage2_model.to(device).eval()
+
+# # -------------------------------
+# # Animal Guard Model (75 species)
+# # -------------------------------
+# animal_guard_model = timm.create_model("efficientnet_b0", pretrained=False, num_classes=75)
+# animal_guard_model.load_state_dict(torch.load("models/models_stored/animal_species_75.pth", map_location=device))
+# animal_guard_model.to(device).eval()
+
+# # -------------------------------
+# # Transform
+# # -------------------------------
+# transform = transforms.Compose([
+#     transforms.Resize((224, 224)),
+#     transforms.ToTensor()
+# ])
+
+# ANIMAL_GUARD_THRESHOLD = 0.80
+
+# # -------------------------------
+# # Prediction Function
+# # -------------------------------
+# def predict(image_path):
+
+#     # ===== Human Face Pre-Check (OpenCV) — runs but does NOT block models =====
+#     opencv_says_human = has_human_face(image_path)
+
+#     image = Image.open(image_path).convert("RGB")
+#     tensor = transform(image).unsqueeze(0).to(device)
+
+#     # ===== Animal Guard =====
+#     with torch.no_grad():
+#         animal_out  = animal_guard_model(tensor)
+#         animal_prob = F.softmax(animal_out, dim=1)
+#         animal_conf, _ = torch.max(animal_prob, 1)
+
+#     if animal_conf.item() >= ANIMAL_GUARD_THRESHOLD:
+#         return f"❌ No plant detected - Animal image given ({animal_conf.item()*100:.2f}%)", animal_conf.item()
+
+#     # ===== Stage 1: Plant vs Non-Plant =====
+#     with torch.no_grad():
+#         out1  = stage1_model(tensor)
+#         prob1 = F.softmax(out1, dim=1)
+#         conf1, pred1 = torch.max(prob1, 1)
+
+#     # ===== Stage 2: Disease Detection =====
+#     with torch.no_grad():
+#         out2  = stage2_model(tensor)
+#         prob2 = F.softmax(out2, dim=1)
+
+#         top2_prob, top2_idx = torch.topk(prob2, 2)
+#         confidence  = top2_prob[0][0].item()
+#         second_conf = top2_prob[0][1].item()
+#         pred_index  = top2_idx[0][0].item()
+
+#     predicted_class = disease_classes[pred_index]
+
+#     # ===== Get model result =====
+#     def get_model_result():
+#         if pred1.item() == 0:
+#             return f"❌ Not a plant detected ({conf1.item()*100:.2f}%)", conf1.item()
+#         if confidence < 0.78:
+#             return f"⚠ UNCLEAR - Move closer to leaf ({confidence*100:.2f}%)", confidence
+#         if (confidence - second_conf) < 0.12:
+#             return f"⚠ UNCLEAR - Focus on single leaf ({confidence*100:.2f}%)", confidence
+#         if "healthy" in predicted_class:
+#             return f"✅ HEALTHY - No disease detected ({confidence*100:.2f}%)", confidence
+#         else:
+#             return f"⚠ UNHEALTHY - Disease detected ({confidence*100:.2f}%)", confidence
+
+#     model_result, model_conf = get_model_result()
+
+#     # ===== OpenCV vs Model comparison =====
+#     if opencv_says_human:
+#         # Model is confident it's a plant → model wins (leaf false positive case)
+#         if pred1.item() == 1 and confidence >= 0.78 and (confidence - second_conf) >= 0.12:
+#             return model_result, model_conf
+#         # Model also uncertain → OpenCV wins, treat as human
+#         return "⚠ Human detected - Not a plant", 0.0
+
+#     # OpenCV didn't flag → return model result normally
+#     return model_result, model_conf
+
+
+# # -------------------------------
+# # Test Example
+# # -------------------------------
+# if __name__ == "__main__":
+#     image_path = "pictures/plants/dry2.jpg"
+#     result, confidence = predict(image_path)
+#     print("Result:", result)
+#     print(f"Confidence: {confidence*100:.2f}%")
+
+
 import torch
 import timm
 import torch.nn.functional as F
 from torchvision import transforms
 from PIL import Image
 import cv2
-import numpy as np
 
 # -------------------------------
 # Device
@@ -424,77 +661,17 @@ device = torch.device("cpu")
 print("Using device:", device)
 
 # -----------------------------
-# Human Face Filter (OpenCV) — Pi-cam hardened
+# Human Face Filter (OpenCV)
 # -----------------------------
 face_cascade = cv2.CascadeClassifier('/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml')
 
 def has_human_face(image_path):
-    """
-    Returns True ONLY if a high-confidence human face is detected.
-
-    Root cause of plant false positives:
-      Pi-cam images have high contrast + noise. Leaf textures (veins, circular
-      blobs, round leaf edges) trigger haarcascade at low minNeighbors.
-
-    Fixes applied:
-    - scaleFactor 1.05 → 1.08
-    - minNeighbors 8 → 14     ← biggest fix; needs many overlapping rectangles
-    - minSize (80,80) → (100,100)
-    - Aspect-ratio guard       ← leaf patches are rarely square
-    - Skin-tone HSV guard      ← green/brown regions rejected as non-skin
-    """
     img = cv2.imread(image_path)
     if img is None:
         return False
-
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    gray = cv2.equalizeHist(gray)   # normalise Pi-cam exposure variations
-
-    faces = face_cascade.detectMultiScale(
-        gray,
-        scaleFactor=1.08,
-        minNeighbors=18,
-        minSize=(100, 100)
-    )
-
-    if len(faces) == 0:
-        return False
-
-    h_img, w_img = img.shape[:2]
-    img_area = h_img * w_img
-
-    for (x, y, w, h) in faces:
-        # 1. Aspect-ratio guard
-        aspect = w / float(h)
-        if aspect < 0.75 or aspect > 1.35:
-            continue
-
-        # 2. Size sanity
-        if (w * h) > 0.60 * img_area:
-            continue
-
-        roi = img[y:y+h, x:x+w]
-        hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-
-        # 3. Fur/animal color rejection (golden/yellow fur)
-        lower_fur = np.array([15, 80,  80],  dtype=np.uint8)
-        upper_fur = np.array([35, 255, 255], dtype=np.uint8)
-        fur_mask  = cv2.inRange(hsv, lower_fur, upper_fur)
-        fur_ratio = cv2.countNonZero(fur_mask) / float(w * h)
-        if fur_ratio > 0.35:
-            continue
-
-        # 4. Skin-tone guard
-        lower_skin = np.array([0,  20,  60], dtype=np.uint8)
-        upper_skin = np.array([18, 150, 255], dtype=np.uint8)
-        mask = cv2.inRange(hsv, lower_skin, upper_skin)
-        skin_ratio = cv2.countNonZero(mask) / float(w * h)
-        if skin_ratio < 0.20:
-            continue
-
-        return True
-
-    return False
+    gray  = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.05, minNeighbors=8, minSize=(80, 80))
+    return len(faces) > 0
 
 # -------------------------------
 # Disease Classes (38)
@@ -569,19 +746,41 @@ transform = transforms.Compose([
 ANIMAL_GUARD_THRESHOLD = 0.80
 
 # -------------------------------
+# Thresholds
+# -------------------------------
+# Original values (strict, designed for clean lab/test images):
+#   CONFIDENCE_FLOOR = 0.78   → caused "UNCLEAR" on Pi cam captures
+#   CONFIDENCE_GAP   = 0.12   → caused "UNCLEAR" on Pi cam captures
+#
+# Relaxed values (work for real-world Pi camera captures):
+#   CONFIDENCE_FLOOR = 0.60   → still filters genuinely uncertain predictions
+#   CONFIDENCE_GAP   = 0.08   → still requires meaningful separation between top-2 classes
+#
+# Why this is safe:
+#   - The model already passed the plant-vs-nonplant stage 1 gate
+#   - The animal guard already rejected non-plant animal images
+#   - At 0.60 confidence the model is still making a real prediction,
+#     not random noise (random would be ~1/38 = 2.6%)
+#   - Gap of 0.08 still means top class is meaningfully preferred over second
+
+CONFIDENCE_FLOOR = 0.60   # was 0.78 — relaxed for Pi cam real-world conditions
+CONFIDENCE_GAP   = 0.08   # was 0.12 — relaxed for Pi cam real-world conditions
+
+# -------------------------------
 # Prediction Function
 # -------------------------------
 def predict(image_path):
 
-    # ===== Human Face Pre-Check (OpenCV) — runs but does NOT block models =====
-    opencv_says_human = has_human_face(image_path)
+    # ===== Human Face Pre-Check =====
+    if has_human_face(image_path):
+        return "⚠ Human detected - Not a plant", 0.0
 
     image = Image.open(image_path).convert("RGB")
     tensor = transform(image).unsqueeze(0).to(device)
 
     # ===== Animal Guard =====
     with torch.no_grad():
-        animal_out  = animal_guard_model(tensor)
+        animal_out = animal_guard_model(tensor)
         animal_prob = F.softmax(animal_out, dim=1)
         animal_conf, _ = torch.max(animal_prob, 1)
 
@@ -590,13 +789,16 @@ def predict(image_path):
 
     # ===== Stage 1: Plant vs Non-Plant =====
     with torch.no_grad():
-        out1  = stage1_model(tensor)
+        out1 = stage1_model(tensor)
         prob1 = F.softmax(out1, dim=1)
         conf1, pred1 = torch.max(prob1, 1)
 
+    if pred1.item() == 0:
+        return f"❌ Not a plant detected ({conf1.item()*100:.2f}%)", conf1.item()
+
     # ===== Stage 2: Disease Detection =====
     with torch.no_grad():
-        out2  = stage2_model(tensor)
+        out2 = stage2_model(tensor)
         prob2 = F.softmax(out2, dim=1)
 
         top2_prob, top2_idx = torch.topk(prob2, 2)
@@ -606,31 +808,23 @@ def predict(image_path):
 
     predicted_class = disease_classes[pred_index]
 
-    # ===== Get model result =====
-    def get_model_result():
-        if pred1.item() == 0:
-            return f"❌ Not a plant detected ({conf1.item()*100:.2f}%)", conf1.item()
-        if confidence < 0.78:
-            return f"⚠ UNCLEAR - Move closer to leaf ({confidence*100:.2f}%)", confidence
-        if (confidence - second_conf) < 0.12:
-            return f"⚠ UNCLEAR - Focus on single leaf ({confidence*100:.2f}%)", confidence
-        if "healthy" in predicted_class:
-            return f"✅ HEALTHY - No disease detected ({confidence*100:.2f}%)", confidence
-        else:
-            return f"⚠ UNHEALTHY - Disease detected ({confidence*100:.2f}%)", confidence
+    # ==============================
+    # DECISION LOGIC
+    # ==============================
 
-    model_result, model_conf = get_model_result()
+    # 1. Too low confidence — genuinely unrecognisable image
+    if confidence < CONFIDENCE_FLOOR:
+        return f"⚠ UNCLEAR - Move closer to leaf ({confidence*100:.2f}%)", confidence
 
-    # ===== OpenCV vs Model comparison =====
-    if opencv_says_human:
-        # Model is confident it's a plant → model wins (leaf false positive case)
-        if pred1.item() == 1 and confidence >= 0.78 and (confidence - second_conf) >= 0.12:
-            return model_result, model_conf
-        # Model also uncertain → OpenCV wins, treat as human
-        return "⚠ Human detected - Not a plant", 0.0
+    # 2. Top two classes are too close — ambiguous result
+    if (confidence - second_conf) < CONFIDENCE_GAP:
+        return f"⚠ UNCLEAR - Focus on single leaf ({confidence*100:.2f}%)", confidence
 
-    # OpenCV didn't flag → return model result normally
-    return model_result, model_conf
+    # 3. Confident and stable — classify
+    if "healthy" in predicted_class:
+        return f"✅ HEALTHY - No disease detected ({confidence*100:.2f}%)", confidence
+    else:
+        return f"⚠ UNHEALTHY - Disease detected ({confidence*100:.2f}%)", confidence
 
 
 # -------------------------------
