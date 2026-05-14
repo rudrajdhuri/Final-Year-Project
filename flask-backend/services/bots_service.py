@@ -89,7 +89,7 @@ def add_bot(data):
     try:
         actuator_col = get_collection(COLLECTIONS["ACTUATORS"])
         actuator_col.insert_one(data)
-        limit_collection(COLLECTIONS["ACTUATORS"], 10)
+        limit_collection(COLLECTIONS["ACTUATORS"], 50)
     except Exception as db_error:
         print("DB insert failed (add_bot):", db_error)
 
@@ -133,7 +133,7 @@ def log_bot_command(command):
     if "message" in command:
         payload["message"] = command["message"]
     actuator_col.insert_one(payload)
-    limit_collection(COLLECTIONS["ACTUATORS"], 10)
+    limit_collection(COLLECTIONS["ACTUATORS"], 50)
     if payload["type"] == "movement":
         set_manual_direction(payload.get("direction") or "S")
     elif payload["type"] == "servo":

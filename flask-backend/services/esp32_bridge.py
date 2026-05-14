@@ -276,7 +276,7 @@ def _record_actuator_event(event_type: str, message: str, extra: dict[str, Any] 
         if extra:
             document.update(extra)
         actuator_col.insert_one(document)
-        limit_collection(COLLECTIONS["ACTUATORS"], 10)
+        limit_collection(COLLECTIONS["ACTUATORS"], 50)
 
 
 def _obstacle_alert_due(current_time: datetime) -> bool:
@@ -325,7 +325,16 @@ def _persist_sensor_reading(reading: dict[str, Any]):
                 "timestamp": current_time,
             }
 
-    if reading["obstacle"] and is_bot_running() and owner_session_id and _obstacle_alert_due(current_time):
+    obstacle_session_active = bool(
+        owner_session_id
+        and (
+            is_bot_running()
+            or is_manual_recording_active()
+            or lock_owner.get("lock_type") == "autonomous"
+        )
+    )
+
+    if reading["obstacle"] and obstacle_session_active and _obstacle_alert_due(current_time):
         _record_actuator_event(
             "sensor_alert",
             "Obstacle detected by ultrasonic sensor. Please clear the path before continuing.",

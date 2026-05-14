@@ -1573,6 +1573,11 @@ type CommandKey = keyof typeof COMMANDS;
 type PageTab = "manual" | "training" | "autonomous";
 type ToastType = "success" | "error" | "info";
 
+type BotSnapshot = {
+  obstacle?: boolean;
+  bot_running?: boolean;
+};
+
 type RecordingStatus = {
   active: boolean;
   started_at: string | null;
@@ -1859,7 +1864,10 @@ function TouchJoystick({
   );
 }
 
-function useEsp32Controller(userId: string, onToast: (message: string, type: ToastType) => void) {
+function useEsp32Controller(
+  userId: string,
+  onToast: (message: string, type: ToastType, durationMs?: number) => void
+) {
   const wsRef = useRef<WebSocket | null>(null);
   const ownsLockRef = useRef(false);
   const [connected, setConnected] = useState(false);
@@ -2379,7 +2387,6 @@ function ManualPage({
         lastCommand={lastCommand}
         sendCommand={sendCommand}
         controlsBlocked={controlsBlocked}
-        hideSideInfoOnMobile
       />
     </div>
   );
@@ -2958,12 +2965,15 @@ export default function BotControlPage() {
   const [tab, setTab] = useState<PageTab>("manual");
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
   const [lockStatus, setLockStatus] = useState<LockStatus | null>(null);
+  const [obstacleVisible, setObstacleVisible] = useState(false);
   const toastTimer = useRef<number | null>(null);
+  const obstacleTimer = useRef<number | null>(null);
+  const obstacleActiveRef = useRef(false);
 
-  const showToast = useCallback((message: string, type: ToastType) => {
+  const showToast = useCallback((message: string, type: ToastType, durationMs = 2800) => {
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
     setToast({ message, type });
-    toastTimer.current = window.setTimeout(() => setToast(null), 2800);
+    toastTimer.current = window.setTimeout(() => setToast(null), durationMs);
   }, []);
 
   const controller = useEsp32Controller(userId, showToast);
@@ -2990,8 +3000,46 @@ export default function BotControlPage() {
   }, [refreshLockStatus]);
 
   useEffect(() => {
+    let active = true;
+
+    const refreshBotSnapshot = async () => {
+      try {
+        const response = await apiFetch("/api/bots", { cache: "no-store" });
+        const payload = await response.json();
+        if (!active || !Array.isArray(payload) || payload.length === 0) return;
+
+        const current: BotSnapshot = payload[0] || {};
+        const obstacleActive = Boolean(current.obstacle && current.bot_running);
+
+        if (obstacleActive && !obstacleActiveRef.current) {
+          showToast("Obstacle detected. Please clear the path before continuing.", "error", 2000);
+          setObstacleVisible(true);
+          if (obstacleTimer.current) window.clearTimeout(obstacleTimer.current);
+          obstacleTimer.current = window.setTimeout(() => setObstacleVisible(false), 2000);
+        }
+
+        if (!obstacleActive && obstacleActiveRef.current) {
+          setObstacleVisible(false);
+        }
+
+        obstacleActiveRef.current = obstacleActive;
+      } catch {
+        // keep current page state if one poll misses
+      }
+    };
+
+    void refreshBotSnapshot();
+    const timer = window.setInterval(refreshBotSnapshot, 1200);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [showToast]);
+
+  useEffect(() => {
     return () => {
       if (toastTimer.current) window.clearTimeout(toastTimer.current);
+      if (obstacleTimer.current) window.clearTimeout(obstacleTimer.current);
     };
   }, []);
 
@@ -3011,6 +3059,12 @@ export default function BotControlPage() {
             </p>
           </div>
         </div>
+
+        {obstacleVisible ? (
+          <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm font-semibold text-red-700 dark:border-red-500/20 dark:bg-red-950/20 dark:text-red-200">
+            Obstacle detected. Please clear the path before continuing.
+          </div>
+        ) : null}
 
         <div className="mb-6 flex gap-3 overflow-x-auto rounded-2xl border border-gray-200 bg-white p-1 shadow-sm [scrollbar-width:none] dark:border-gray-800 dark:bg-gray-900 [&::-webkit-scrollbar]:hidden">
           {[
