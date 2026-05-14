@@ -1,174 +1,175 @@
+# import torch
+# import timm
+# import torch.nn.functional as F
+# from torchvision import transforms
+# from PIL import Image
+# import cv2
+
+# # -------------------------------
+# # Device
+# # -------------------------------
+# device = torch.device("cpu")
+# print("Using device:", device)
+
+# # -----------------------------
+# # Human Face Filter (OpenCV)
+# # -----------------------------
+# face_cascade = cv2.CascadeClassifier('/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml')
+
+# def has_human_face(image_path):
+#     img = cv2.imread(image_path)
+#     if img is None:
+#         return False
+#     gray  = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+#     faces = face_cascade.detectMultiScale(gray, scaleFactor=1.05, minNeighbors=8, minSize=(80, 80))
+#     return len(faces) > 0
+
+# # -------------------------------
+# # Disease Classes (38)
+# # -------------------------------
+# disease_classes = [
+# 'Apple___Apple_scab',
+# 'Apple___Black_rot',
+# 'Apple___Cedar_apple_rust',
+# 'Apple___healthy',
+# 'Blueberry___healthy',
+# 'Cherry_(including_sour)___Powdery_mildew',
+# 'Cherry_(including_sour)___healthy',
+# 'Corn_(maize)___Cercospora_leaf_spot Gray_leaf_spot',
+# 'Corn_(maize)___Common_rust_',
+# 'Corn_(maize)___Northern_Leaf_Blight',
+# 'Corn_(maize)___healthy',
+# 'Grape___Black_rot',
+# 'Grape___Esca_(Black_Measles)',
+# 'Grape___Leaf_blight_(Isariopsis_Leaf_Spot)',
+# 'Grape___healthy',
+# 'Orange___Haunglongbing_(Citrus_greening)',
+# 'Peach___Bacterial_spot',
+# 'Peach___healthy',
+# 'Pepper,_bell___Bacterial_spot',
+# 'Pepper,_bell___healthy',
+# 'Potato___Early_blight',
+# 'Potato___Late_blight',
+# 'Potato___healthy',
+# 'Raspberry___healthy',
+# 'Soybean___healthy',
+# 'Squash___Powdery_mildew',
+# 'Strawberry___Leaf_scorch',
+# 'Strawberry___healthy',
+# 'Tomato___Bacterial_spot',
+# 'Tomato___Early_blight',
+# 'Tomato___Late_blight',
+# 'Tomato___Leaf_Mold',
+# 'Tomato___Septoria_leaf_spot',
+# 'Tomato___Spider_mites Two-spotted_spider_mite',
+# 'Tomato___Target_Spot',
+# 'Tomato___Tomato_Yellow_Leaf_Curl_Virus',
+# 'Tomato___Tomato_mosaic_virus',
+# 'Tomato___healthy'
+# ]
+
+# # -------------------------------
+# # Load Models
+# # -------------------------------
+# stage1_model = timm.create_model("efficientnet_b0", pretrained=False, num_classes=2)
+# stage1_model.load_state_dict(torch.load("models/models_stored/plant_vs_nonplant.pth", map_location=device))
+# stage1_model.to(device).eval()
+
+# stage2_model = timm.create_model("efficientnet_b0", pretrained=False, num_classes=38)
+# stage2_model.load_state_dict(torch.load("models/models_stored/plant_disease_38.pth", map_location=device))
+# stage2_model.to(device).eval()
+
+# # -------------------------------
+# # Animal Guard Model (75 species)
+# # -------------------------------
+# animal_guard_model = timm.create_model("efficientnet_b0", pretrained=False, num_classes=75)
+# animal_guard_model.load_state_dict(torch.load("models/models_stored/animal_species_75.pth", map_location=device))
+# animal_guard_model.to(device).eval()
+
+# # -------------------------------
+# # Transform
+# # -------------------------------
+# transform = transforms.Compose([
+#     transforms.Resize((224, 224)),
+#     transforms.ToTensor()
+# ])
+
+# ANIMAL_GUARD_THRESHOLD = 0.80
+
+# # -------------------------------
+# # Prediction Function
+# # -------------------------------
+# def predict(image_path):
+
+#     # ===== Human Face Pre-Check =====
+#     if has_human_face(image_path):
+#         return "⚠ Human detected - Not a plant", 0.0
+
+
+#     image = Image.open(image_path).convert("RGB")
+#     tensor = transform(image).unsqueeze(0).to(device)
+
+#     # ===== Animal Guard =====
+#     with torch.no_grad():
+#         animal_out = animal_guard_model(tensor)
+#         animal_prob = F.softmax(animal_out, dim=1)
+#         animal_conf, _ = torch.max(animal_prob, 1)
+
+#     if animal_conf.item() >= ANIMAL_GUARD_THRESHOLD:
+#         return f"❌ No plant detected - Animal image given ({animal_conf.item()*100:.2f}%)", animal_conf.item()
+
+#     # ===== Stage 1: Plant vs Non-Plant =====
+#     with torch.no_grad():
+#         out1 = stage1_model(tensor)
+#         prob1 = F.softmax(out1, dim=1)
+#         conf1, pred1 = torch.max(prob1, 1)
+
+#     if pred1.item() == 0:
+#         return f"❌ Not a plant detected ({conf1.item()*100:.2f}%)", conf1.item()
+
+#     # ===== Stage 2: Disease Detection =====
+#     with torch.no_grad():
+#         out2 = stage2_model(tensor)
+#         prob2 = F.softmax(out2, dim=1)
+
+#         top2_prob, top2_idx = torch.topk(prob2, 2)
+#         confidence = top2_prob[0][0].item()
+#         second_conf = top2_prob[0][1].item()
+#         pred_index = top2_idx[0][0].item()
+
+#     predicted_class = disease_classes[pred_index]
+
+#     # ==============================
+#     # DECISION LOGIC
+#     # ==============================
+
+#     # 1️⃣ Low confidence → unclear
+#     if confidence < 0.78:
+#         return f"⚠ UNCLEAR - Move closer to leaf ({confidence*100:.2f}%)", confidence
+
+#     # 2️⃣ Unstable prediction → unclear
+#     if (confidence - second_conf) < 0.12:
+#         return f"⚠ UNCLEAR - Focus on single leaf ({confidence*100:.2f}%)", confidence
+
+#     # 3️⃣ Confident → healthy or unhealthy
+#     if "healthy" in predicted_class:
+#         return f"✅ HEALTHY - No disease detected ({confidence*100:.2f}%)", confidence
+#     else:
+#         return f"⚠ UNHEALTHY - Disease detected ({confidence*100:.2f}%)", confidence
+
+
+# # -------------------------------
+# # Test Example
+# # -------------------------------
+# if __name__ == "__main__":
+#     image_path = "pictures/plants/dry2.jpg"
+#     result, confidence = predict(image_path)
+#     print("Result:", result)
+#     print(f"Confidence: {confidence*100:.2f}%")
+
+
+
 import torch
-import timm
-import torch.nn.functional as F
-from torchvision import transforms
-from PIL import Image
-import cv2
-
-# -------------------------------
-# Device
-# -------------------------------
-device = torch.device("cpu")
-print("Using device:", device)
-
-# -----------------------------
-# Human Face Filter (OpenCV)
-# -----------------------------
-face_cascade = cv2.CascadeClassifier('/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml')
-
-def has_human_face(image_path):
-    img = cv2.imread(image_path)
-    if img is None:
-        return False
-    gray  = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.05, minNeighbors=8, minSize=(80, 80))
-    return len(faces) > 0
-
-# -------------------------------
-# Disease Classes (38)
-# -------------------------------
-disease_classes = [
-'Apple___Apple_scab',
-'Apple___Black_rot',
-'Apple___Cedar_apple_rust',
-'Apple___healthy',
-'Blueberry___healthy',
-'Cherry_(including_sour)___Powdery_mildew',
-'Cherry_(including_sour)___healthy',
-'Corn_(maize)___Cercospora_leaf_spot Gray_leaf_spot',
-'Corn_(maize)___Common_rust_',
-'Corn_(maize)___Northern_Leaf_Blight',
-'Corn_(maize)___healthy',
-'Grape___Black_rot',
-'Grape___Esca_(Black_Measles)',
-'Grape___Leaf_blight_(Isariopsis_Leaf_Spot)',
-'Grape___healthy',
-'Orange___Haunglongbing_(Citrus_greening)',
-'Peach___Bacterial_spot',
-'Peach___healthy',
-'Pepper,_bell___Bacterial_spot',
-'Pepper,_bell___healthy',
-'Potato___Early_blight',
-'Potato___Late_blight',
-'Potato___healthy',
-'Raspberry___healthy',
-'Soybean___healthy',
-'Squash___Powdery_mildew',
-'Strawberry___Leaf_scorch',
-'Strawberry___healthy',
-'Tomato___Bacterial_spot',
-'Tomato___Early_blight',
-'Tomato___Late_blight',
-'Tomato___Leaf_Mold',
-'Tomato___Septoria_leaf_spot',
-'Tomato___Spider_mites Two-spotted_spider_mite',
-'Tomato___Target_Spot',
-'Tomato___Tomato_Yellow_Leaf_Curl_Virus',
-'Tomato___Tomato_mosaic_virus',
-'Tomato___healthy'
-]
-
-# -------------------------------
-# Load Models
-# -------------------------------
-stage1_model = timm.create_model("efficientnet_b0", pretrained=False, num_classes=2)
-stage1_model.load_state_dict(torch.load("models/models_stored/plant_vs_nonplant.pth", map_location=device))
-stage1_model.to(device).eval()
-
-stage2_model = timm.create_model("efficientnet_b0", pretrained=False, num_classes=38)
-stage2_model.load_state_dict(torch.load("models/models_stored/plant_disease_38.pth", map_location=device))
-stage2_model.to(device).eval()
-
-# -------------------------------
-# Animal Guard Model (75 species)
-# -------------------------------
-animal_guard_model = timm.create_model("efficientnet_b0", pretrained=False, num_classes=75)
-animal_guard_model.load_state_dict(torch.load("models/models_stored/animal_species_75.pth", map_location=device))
-animal_guard_model.to(device).eval()
-
-# -------------------------------
-# Transform
-# -------------------------------
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor()
-])
-
-ANIMAL_GUARD_THRESHOLD = 0.80
-
-# -------------------------------
-# Prediction Function
-# -------------------------------
-def predict(image_path):
-
-    # ===== Human Face Pre-Check =====
-    if has_human_face(image_path):
-        return "⚠ Human detected - Not a plant", 0.0
-
-
-    image = Image.open(image_path).convert("RGB")
-    tensor = transform(image).unsqueeze(0).to(device)
-
-    # ===== Animal Guard =====
-    with torch.no_grad():
-        animal_out = animal_guard_model(tensor)
-        animal_prob = F.softmax(animal_out, dim=1)
-        animal_conf, _ = torch.max(animal_prob, 1)
-
-    if animal_conf.item() >= ANIMAL_GUARD_THRESHOLD:
-        return f"❌ No plant detected - Animal image given ({animal_conf.item()*100:.2f}%)", animal_conf.item()
-
-    # ===== Stage 1: Plant vs Non-Plant =====
-    with torch.no_grad():
-        out1 = stage1_model(tensor)
-        prob1 = F.softmax(out1, dim=1)
-        conf1, pred1 = torch.max(prob1, 1)
-
-    if pred1.item() == 0:
-        return f"❌ Not a plant detected ({conf1.item()*100:.2f}%)", conf1.item()
-
-    # ===== Stage 2: Disease Detection =====
-    with torch.no_grad():
-        out2 = stage2_model(tensor)
-        prob2 = F.softmax(out2, dim=1)
-
-        top2_prob, top2_idx = torch.topk(prob2, 2)
-        confidence = top2_prob[0][0].item()
-        second_conf = top2_prob[0][1].item()
-        pred_index = top2_idx[0][0].item()
-
-    predicted_class = disease_classes[pred_index]
-
-    # ==============================
-    # DECISION LOGIC
-    # ==============================
-
-    # 1️⃣ Low confidence → unclear
-    if confidence < 0.78:
-        return f"⚠ UNCLEAR - Move closer to leaf ({confidence*100:.2f}%)", confidence
-
-    # 2️⃣ Unstable prediction → unclear
-    if (confidence - second_conf) < 0.12:
-        return f"⚠ UNCLEAR - Focus on single leaf ({confidence*100:.2f}%)", confidence
-
-    # 3️⃣ Confident → healthy or unhealthy
-    if "healthy" in predicted_class:
-        return f"✅ HEALTHY - No disease detected ({confidence*100:.2f}%)", confidence
-    else:
-        return f"⚠ UNHEALTHY - Disease detected ({confidence*100:.2f}%)", confidence
-
-
-# -------------------------------
-# Test Example
-# -------------------------------
-if __name__ == "__main__":
-    image_path = "pictures/plants/dry2.jpg"
-    result, confidence = predict(image_path)
-    print("Result:", result)
-    print(f"Confidence: {confidence*100:.2f}%")
-
-
-    import torch
 import timm
 import torch.nn.functional as F
 from torchvision import transforms
@@ -212,7 +213,7 @@ def has_human_face(image_path):
     faces = face_cascade.detectMultiScale(
         gray,
         scaleFactor=1.08,
-        minNeighbors=14,        # was 8 — this alone fixes most plant false positives
+        minNeighbors=18,
         minSize=(100, 100)
     )
 
@@ -223,28 +224,35 @@ def has_human_face(image_path):
     img_area = h_img * w_img
 
     for (x, y, w, h) in faces:
-        # 1. Aspect-ratio guard — real face boxes should be roughly square
+        # 1. Aspect-ratio guard
         aspect = w / float(h)
         if aspect < 0.75 or aspect > 1.35:
             continue
 
-        # 2. Size sanity — face shouldn't be >60% of the full frame
+        # 2. Size sanity
         if (w * h) > 0.60 * img_area:
             continue
 
-        # 3. Skin-tone guard
         roi = img[y:y+h, x:x+w]
         hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-        lower_skin = np.array([0,  20,  50], dtype=np.uint8)
-        upper_skin = np.array([25, 170, 255], dtype=np.uint8)
-        mask = cv2.inRange(hsv, lower_skin, upper_skin)
-        skin_ratio = cv2.countNonZero(mask) / float(w * h)
 
-        # Plants are green/brown — skin_ratio will be very low for them
-        if skin_ratio < 0.15:
+        # 3. Fur/animal color rejection (golden/yellow fur)
+        lower_fur = np.array([15, 80,  80],  dtype=np.uint8)
+        upper_fur = np.array([35, 255, 255], dtype=np.uint8)
+        fur_mask  = cv2.inRange(hsv, lower_fur, upper_fur)
+        fur_ratio = cv2.countNonZero(fur_mask) / float(w * h)
+        if fur_ratio > 0.35:
             continue
 
-        return True   # passed all guards → real human face
+        # 4. Skin-tone guard
+        lower_skin = np.array([0,  20,  60], dtype=np.uint8)
+        upper_skin = np.array([18, 150, 255], dtype=np.uint8)
+        mask = cv2.inRange(hsv, lower_skin, upper_skin)
+        skin_ratio = cv2.countNonZero(mask) / float(w * h)
+        if skin_ratio < 0.20:
+            continue
+
+        return True
 
     return False
 

@@ -173,6 +173,11 @@
 #     result = predict(image_path)
 #     print("Result:", result)
 
+
+
+
+
+
 import torch
 import timm
 import torch.nn.functional as F
@@ -215,8 +220,8 @@ def has_human_face(image_path):
     faces = face_cascade.detectMultiScale(
         gray,
         scaleFactor=1.08,
-        minNeighbors=14,        # was 8 — key fix for false positives on animals/plants
-        minSize=(100, 100)      # was (80,80)
+        minNeighbors=18,        # raised: dog/cat snouts don't sustain this many overlaps
+        minSize=(100, 100)
     )
 
     if len(faces) == 0:
@@ -231,24 +236,30 @@ def has_human_face(image_path):
         if aspect < 0.75 or aspect > 1.35:
             continue
 
-        # 2. Size sanity — face shouldn't be >60% of frame (Pi cam close-ups)
+        # 2. Size sanity — face shouldn't be >60% of frame
         if (w * h) > 0.60 * img_area:
             continue
 
-        # 3. Skin-tone guard in HSV
         roi = img[y:y+h, x:x+w]
         hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-        # Skin hue range: 0-25 and 340-360 (wraps), saturation 20-170, value 50-255
-        lower1 = np.array([0,  20,  50], dtype=np.uint8)
-        upper1 = np.array([25, 170, 255], dtype=np.uint8)
-        lower2 = np.array([340, 20,  50], dtype=np.uint8)  # won't hit in 0-179 range
-        upper2 = np.array([179, 170, 255], dtype=np.uint8)
-        mask1  = cv2.inRange(hsv, lower1, upper1)
-        mask2  = cv2.inRange(hsv, lower2, upper2)
-        skin_ratio = (cv2.countNonZero(mask1) + cv2.countNonZero(mask2)) / float(w * h)
 
-        # Require at least 15% skin-tone pixels inside the detected box
-        if skin_ratio < 0.15:
+        # 3. Fur/animal color rejection
+        # Golden/yellow fur (golden retrievers, dogs): hue 15-35, high saturation
+        lower_fur = np.array([15, 80,  80],  dtype=np.uint8)
+        upper_fur = np.array([35, 255, 255], dtype=np.uint8)
+        fur_mask  = cv2.inRange(hsv, lower_fur, upper_fur)
+        fur_ratio = cv2.countNonZero(fur_mask) / float(w * h)
+        # If >35% of the box is golden/yellow fur → animal snout, not a human face
+        if fur_ratio > 0.35:
+            continue
+
+        # 4. Skin-tone guard — human skin hue 0-18, low-mid saturation
+        lower_skin = np.array([0,  20,  60], dtype=np.uint8)
+        upper_skin = np.array([18, 150, 255], dtype=np.uint8)
+        skin_mask  = cv2.inRange(hsv, lower_skin, upper_skin)
+        skin_ratio = cv2.countNonZero(skin_mask) / float(w * h)
+        # Require at least 20% skin-tone pixels (raised from 15%)
+        if skin_ratio < 0.20:
             continue
 
         # Passed all guards — treat as a real human face
