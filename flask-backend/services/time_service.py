@@ -25,7 +25,20 @@ def iso_ist(value: datetime | None) -> str | None:
     return value.astimezone(IST).isoformat()
 
 
+# def from_epoch_ms_ist(value: int | float | None) -> datetime:
+#     if not value:
+#         return now_ist()
+#     return datetime.fromtimestamp(float(value) / 1000, tz=IST)
+
+
+from datetime import timezone
+
 def from_epoch_ms_ist(value: int | float | None) -> datetime:
     if not value:
         return now_ist()
-    return datetime.fromtimestamp(float(value) / 1000, tz=IST)
+
+    # First interpret epoch correctly as UTC
+    utc_dt = datetime.fromtimestamp(float(value) / 1000, tz=timezone.utc)
+
+    # Then convert to IST
+    return utc_dt.astimezone(IST)
