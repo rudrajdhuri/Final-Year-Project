@@ -631,7 +631,7 @@ def _get_predictor():
     return _plant_predictor
 
 
-def _image_to_b64(filepath: str, max_size: int = 400) -> str:
+def _image_to_b64(filepath: str, max_size: int = 900) -> str:
     try:
         img = cv2.imread(filepath)
         if img is None:
@@ -674,7 +674,8 @@ def _save_and_cleanup(user_id, result_text, confidence_value, filepath, filename
 def _save_frame_and_predict(image, user_id: str, filename_prefix: str, owner_session_id=None, source="camera", save_only_relevant=False):
     filename = f"{filename_prefix}_{uuid.uuid4().hex[:10]}.jpg"
     filepath = os.path.join(UPLOAD_FOLDER, filename)
-    cv2.imwrite(filepath, image)
+    small = cv2.resize(image, (640, 360))
+    cv2.imwrite(filepath, small)
 
     result_text, confidence = _get_predictor()(filepath)
     confidence_value = round(float(confidence * 100), 2)

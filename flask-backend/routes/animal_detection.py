@@ -733,7 +733,7 @@ def _get_predictor():
     return _animal_predictor
 
 
-def _image_to_b64(filepath: str, max_size: int = 400) -> str:
+def _image_to_b64(filepath: str, max_size: int = 900) -> str:
     try:
         img = cv2.imread(filepath)
         if img is None:
@@ -799,7 +799,8 @@ def _save_and_cleanup(user_id, threat, animal_name, confidence, result_text, fil
 def _save_frame_and_predict(image, user_id: str, filename_prefix: str, owner_session_id=None, source="camera", save_only_relevant=False):
     filename = f"{filename_prefix}_{uuid.uuid4().hex[:10]}.jpg"
     filepath = os.path.join(UPLOAD_FOLDER, filename)
-    cv2.imwrite(filepath, image)
+    small = cv2.resize(image, (640, 360))
+    cv2.imwrite(filepath, small)
 
     result_text = _get_predictor()(filepath)
     threat, animal_name, confidence = _parse_prediction(result_text)
