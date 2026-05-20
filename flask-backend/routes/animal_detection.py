@@ -224,6 +224,485 @@
 
 
 
+# import base64
+# import os
+# import uuid
+
+# import cv2
+# import numpy as np
+# from flask import Blueprint, jsonify, request, send_from_directory
+
+# from database import COLLECTIONS, get_collection, limit_collection
+# from services.camera_service import capture_single_frame
+# from services.buzzer_service import buzz
+# from services.live_detection_service import record_detection_result
+# from services.time_service import iso_ist, now_ist
+
+
+# animal_detection_bp = Blueprint("animal_detection", __name__)
+
+# UPLOAD_FOLDER = "uploads"
+# os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+# _animal_predictor = None
+
+
+# def _get_predictor():
+#     global _animal_predictor
+#     if _animal_predictor is None:
+#         from models.animal_main import predict as animal_predict
+#         _animal_predictor = animal_predict
+#     return _animal_predictor
+
+
+# def _image_to_b64(filepath: str, max_size: int = 400) -> str:
+#     try:
+#         img = cv2.imread(filepath)
+#         if img is None:
+#             return ""
+#         height, width = img.shape[:2]
+#         if max(height, width) > max_size:
+#             scale = max_size / max(height, width)
+#             img = cv2.resize(img, (int(width * scale), int(height * scale)))
+#         _, buffer = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 75])
+#         return "data:image/jpeg;base64," + base64.b64encode(buffer).decode()
+#     except Exception:
+#         return ""
+
+
+# def _parse_prediction(result_text: str):
+#     threat = "Threat" in result_text
+#     animal_name = "Unknown"
+#     confidence = 0.0
+
+#     if "Animal:" in result_text:
+#         try:
+#             animal_part = result_text.split("Animal:")[1]
+#             animal_name = animal_part.split("(")[0].strip()
+#             confidence = round(float(animal_part.split("(")[1].replace("%)", "")), 2)
+#         except Exception:
+#             confidence = 0.0
+#     elif "(" in result_text and "%)" in result_text:
+#         try:
+#             confidence = round(float(result_text.split("(")[1].replace("%)", "")), 2)
+#         except Exception:
+#             confidence = 0.0
+
+#     return threat, animal_name, confidence
+
+
+# def _save_and_cleanup(user_id, threat, animal_name, confidence, result_text, filepath, filename, owner_session_id=None, source="camera"):
+#     image_b64 = _image_to_b64(filepath)
+#     timestamp = now_ist()
+#     animal_col = get_collection(COLLECTIONS["ANIMALS"])
+#     animal_col.insert_one({
+#         "user_id": user_id,
+#         "threat_detected": threat,
+#         "animal_type": animal_name,
+#         "confidence": confidence,
+#         "filename": filename,
+#         "message": result_text,
+#         "image_b64": image_b64,
+#         "timestamp": timestamp,
+#         "owner_session_id": owner_session_id,
+#         "source": source,
+#     })
+#     limit_collection(COLLECTIONS["ANIMALS"])
+
+#     try:
+#         if os.path.exists(filepath):
+#             os.remove(filepath)
+#     except Exception:
+#         pass
+
+#     return image_b64, timestamp
+
+
+# def _save_frame_and_predict(image, user_id: str, filename_prefix: str, owner_session_id=None, source="camera", save_only_relevant=False):
+#     filename = f"{filename_prefix}_{uuid.uuid4().hex[:10]}.jpg"
+#     filepath = os.path.join(UPLOAD_FOLDER, filename)
+#     cv2.imwrite(filepath, image)
+
+#     result_text = _get_predictor()(filepath)
+#     threat, animal_name, confidence = _parse_prediction(result_text)
+
+#     # Only save to DB if: threat detected OR explicitly saving everything (save_only_relevant=False)
+#     # For capture_camera and detect_animal (manual), save_only_relevant=False → save all
+#     # For auto-detection (live), save_only_relevant=True → save only threats
+#     should_save = threat or not save_only_relevant
+
+#     if should_save:
+#         image_b64, timestamp = _save_and_cleanup(
+#             user_id, threat, animal_name, confidence,
+#             result_text, filepath, filename, owner_session_id, source,
+#         )
+#     else:
+#         image_b64 = _image_to_b64(filepath)
+#         timestamp = now_ist()
+#         try:
+#             if os.path.exists(filepath):
+#                 os.remove(filepath)
+#         except Exception:
+#             pass
+
+#     payload = {
+#         "success": True,
+#         "threat_detected": threat,
+#         "animal_type": animal_name,
+#         "confidence": confidence,
+#         "filename": filename if should_save else None,
+#         "message": result_text,
+#         "image_b64": image_b64,
+#         "source": source,
+#         "timestamp": iso_ist(timestamp),
+#     }
+#     record_detection_result("animal", payload, owner_session_id=owner_session_id, stored=should_save)
+#     return payload
+
+
+# @animal_detection_bp.route("/detect-animal", methods=["POST"])
+# def detect_animal():
+#     try:
+#         if not request.is_json or "image_base64" not in request.json:
+#             return jsonify({"success": False, "error": "No image provided"}), 400
+
+#         base64_data = request.json["image_base64"]
+#         if "," in base64_data:
+#             base64_data = base64_data.split(",")[1]
+
+#         img_bytes = base64.b64decode(base64_data)
+#         nparr = np.frombuffer(img_bytes, np.uint8)
+#         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+#         if image is None:
+#             return jsonify({"success": False, "error": "Failed to decode image"}), 400
+
+#         user_id = request.json.get("user_id", "guest")
+#         owner_session_id = request.json.get("session_id")
+#         source = request.json.get("source", "upload")
+#         save_only_relevant = bool(request.json.get("save_only_relevant"))
+
+#         payload = _save_frame_and_predict(
+#             image, user_id, "animal_upload",
+#             owner_session_id, source=source,
+#             save_only_relevant=save_only_relevant,
+#         )
+#         if payload.get("threat_detected"):
+#             buzz(2)
+#         return jsonify(payload)
+#     except Exception as exc:
+#         return jsonify({"success": False, "error": str(exc)}), 500
+
+
+# @animal_detection_bp.route("/capture-camera", methods=["POST"])
+# def capture_camera():
+#     try:
+#         user_id = request.json.get("user_id", "guest") if request.is_json and request.json else "guest"
+#         owner_session_id = request.json.get("session_id") if request.is_json and request.json else None
+#         frame, source = capture_single_frame()
+
+#         # *** FIX: capture_camera saves only threats (save_only_relevant=True) ***
+#         # Previously it always saved every capture — causing history to fill with
+#         # "Not an animal / No plant" records from every single Pi cam press.
+#         # Now only actual threat detections are stored; non-threats still return
+#         # the full result + image to the frontend, just not written to MongoDB.
+#         payload = _save_frame_and_predict(
+#             frame, user_id, "animal_camera",
+#             owner_session_id, source="camera",
+#             save_only_relevant=True,
+#         )
+#         payload["camera_source"] = source
+#         if payload.get("threat_detected"):
+#             buzz(2)
+#         return jsonify(payload)
+#     except Exception as exc:
+#         return jsonify({"success": False, "error": str(exc)}), 500
+
+
+# @animal_detection_bp.route("/image/<filename>")
+# def get_image(filename):
+#     return send_from_directory(UPLOAD_FOLDER, filename)
+
+
+# @animal_detection_bp.route("/history")
+# def animal_history():
+#     try:
+#         user_id = request.args.get("user_id", "guest")
+#         session_id = request.args.get("session_id")
+#         animal_col = get_collection(COLLECTIONS["ANIMALS"])
+#         query = {"user_id": user_id}
+#         if user_id == "guest" and session_id:
+#             query["owner_session_id"] = session_id
+#         records = list(animal_col.find(query).sort("timestamp", -1).limit(15))
+#         for row in records:
+#             row["_id"] = str(row["_id"])
+#             ts = row.get("timestamp")
+#             if ts is not None:
+#                 import datetime
+#                 if isinstance(ts, datetime.datetime):
+#                     # Convert to IST and format with explicit +05:30 offset
+#                     # so the frontend parseTimestamp() knows it's already IST
+#                     IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+#                     if ts.tzinfo is None:
+#                         ts = ts.replace(tzinfo=IST)
+#                     else:
+#                         ts = ts.astimezone(IST)
+#                     row["timestamp"] = ts.strftime("%Y-%m-%dT%H:%M:%S+05:30")
+#                 else:
+#                     row["timestamp"] = iso_ist(ts)
+#             else:
+#                 row["timestamp"] = None
+#         return jsonify({"success": True, "data": records})
+#     except Exception as exc:
+#         return jsonify({"success": False, "error": str(exc)}), 500
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# import base64
+# import os
+# import uuid
+
+# import cv2
+# import numpy as np
+# from flask import Blueprint, jsonify, request, send_from_directory
+
+# from database import COLLECTIONS, get_collection, limit_collection
+# from services.camera_service import capture_single_frame
+# from services.buzzer_service import buzz
+# from services.live_detection_service import record_detection_result
+# from services.time_service import iso_ist, now_ist
+
+
+# animal_detection_bp = Blueprint("animal_detection", __name__)
+
+# UPLOAD_FOLDER = "uploads"
+# os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+# _animal_predictor = None
+
+
+# def _get_predictor():
+#     global _animal_predictor
+#     if _animal_predictor is None:
+#         from models.animal_main import predict as animal_predict
+
+#         _animal_predictor = animal_predict
+#     return _animal_predictor
+
+
+# def _image_to_b64(filepath: str, max_size: int = 400) -> str:
+#     try:
+#         img = cv2.imread(filepath)
+#         if img is None:
+#             return ""
+#         height, width = img.shape[:2]
+#         if max(height, width) > max_size:
+#             scale = max_size / max(height, width)
+#             img = cv2.resize(img, (int(width * scale), int(height * scale)))
+#         _, buffer = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 75])
+#         return "data:image/jpeg;base64," + base64.b64encode(buffer).decode()
+#     except Exception:
+#         return ""
+
+
+# def _parse_prediction(result_text: str):
+#     threat = "Threat" in result_text
+#     animal_name = "Unknown"
+#     confidence = 0.0
+
+#     if "Animal:" in result_text:
+#         try:
+#             animal_part = result_text.split("Animal:")[1]
+#             animal_name = animal_part.split("(")[0].strip()
+#             confidence = round(float(animal_part.split("(")[1].replace("%)", "")), 2)
+#         except Exception:
+#             confidence = 0.0
+#     elif "(" in result_text and "%)" in result_text:
+#         try:
+#             confidence = round(float(result_text.split("(")[1].replace("%)", "")), 2)
+#         except Exception:
+#             confidence = 0.0
+
+#     return threat, animal_name, confidence
+
+
+# def _save_and_cleanup(user_id, threat, animal_name, confidence, result_text, filepath, filename, owner_session_id=None, source="camera"):
+#     image_b64 = _image_to_b64(filepath)
+#     timestamp = now_ist()
+#     animal_col = get_collection(COLLECTIONS["ANIMALS"])
+#     animal_col.insert_one(
+#         {
+#             "user_id": user_id,
+#             "threat_detected": threat,
+#             "animal_type": animal_name,
+#             "confidence": confidence,
+#             "filename": filename,
+#             "message": result_text,
+#             "image_b64": image_b64,
+#             "timestamp": timestamp,
+#             "owner_session_id": owner_session_id,
+#             "source": source,
+#         }
+#     )
+#     limit_collection(COLLECTIONS["ANIMALS"])
+
+#     try:
+#         if os.path.exists(filepath):
+#             os.remove(filepath)
+#     except Exception:
+#         pass
+
+#     return image_b64, timestamp
+
+
+# def _save_frame_and_predict(image, user_id: str, filename_prefix: str, owner_session_id=None, source="camera", save_only_relevant=False):
+#     filename = f"{filename_prefix}_{uuid.uuid4().hex[:10]}.jpg"
+#     filepath = os.path.join(UPLOAD_FOLDER, filename)
+#     cv2.imwrite(filepath, image)
+
+#     result_text = _get_predictor()(filepath)
+#     threat, animal_name, confidence = _parse_prediction(result_text)
+#     should_save = threat or not save_only_relevant
+
+#     if should_save:
+#         image_b64, timestamp = _save_and_cleanup(
+#             user_id,
+#             threat,
+#             animal_name,
+#             confidence,
+#             result_text,
+#             filepath,
+#             filename,
+#             owner_session_id,
+#             source,
+#         )
+#     else:
+#         image_b64 = _image_to_b64(filepath)
+#         timestamp = now_ist()
+#         try:
+#             if os.path.exists(filepath):
+#                 os.remove(filepath)
+#         except Exception:
+#             pass
+
+#     payload = {
+#         "success": True,
+#         "threat_detected": threat,
+#         "animal_type": animal_name,
+#         "confidence": confidence,
+#         "filename": filename if should_save else None,
+#         "message": result_text,
+#         "image_b64": image_b64,
+#         "source": source,
+#         "timestamp": iso_ist(timestamp),
+#     }
+#     record_detection_result("animal", payload, owner_session_id=owner_session_id, stored=should_save)
+#     return payload
+
+
+# @animal_detection_bp.route("/detect-animal", methods=["POST"])
+# def detect_animal():
+#     try:
+#         if not request.is_json or "image_base64" not in request.json:
+#             return jsonify({"success": False, "error": "No image provided"}), 400
+
+#         base64_data = request.json["image_base64"]
+#         if "," in base64_data:
+#             base64_data = base64_data.split(",")[1]
+
+#         img_bytes = base64.b64decode(base64_data)
+#         nparr = np.frombuffer(img_bytes, np.uint8)
+#         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+#         if image is None:
+#             return jsonify({"success": False, "error": "Failed to decode image"}), 400
+
+#         user_id = request.json.get("user_id", "guest")
+#         owner_session_id = request.json.get("session_id")
+#         payload = _save_frame_and_predict(
+#             image,
+#             user_id,
+#             "animal_upload",
+#             owner_session_id,
+#             source=request.json.get("source", "upload"),
+#             save_only_relevant=bool(request.json.get("save_only_relevant")),
+#         )
+#         if payload.get("threat_detected"):
+#             buzz(2)
+#         return jsonify(payload)
+#     except Exception as exc:
+#         return jsonify({"success": False, "error": str(exc)}), 500
+
+
+# @animal_detection_bp.route("/capture-camera", methods=["POST"])
+# def capture_camera():
+#     try:
+#         user_id = request.json.get("user_id", "guest") if request.is_json and request.json else "guest"
+#         owner_session_id = request.json.get("session_id") if request.is_json and request.json else None
+#         frame, source = capture_single_frame()
+#         payload = _save_frame_and_predict(frame, user_id, "animal_camera", owner_session_id, source="camera")
+#         payload["camera_source"] = source
+#         if payload.get("threat_detected"):
+#             buzz(2)
+#         return jsonify(payload)
+#     except Exception as exc:
+#         return jsonify({"success": False, "error": str(exc)}), 500
+
+
+# @animal_detection_bp.route("/image/<filename>")
+# def get_image(filename):
+#     return send_from_directory(UPLOAD_FOLDER, filename)
+
+
+# @animal_detection_bp.route("/history")
+# def animal_history():
+#     try:
+#         user_id = request.args.get("user_id", "guest")
+#         session_id = request.args.get("session_id")
+#         animal_col = get_collection(COLLECTIONS["ANIMALS"])
+#         query = {"user_id": user_id}
+#         if user_id == "guest" and session_id:
+#             query["owner_session_id"] = session_id
+#         records = list(animal_col.find(query).sort("timestamp", -1).limit(15))
+#         for row in records:
+#             row["_id"] = str(row["_id"])
+#             row["timestamp"] = iso_ist(row.get("timestamp"))
+#         return jsonify({"success": True, "data": records})
+#     except Exception as exc:
+#         return jsonify({"success": False, "error": str(exc)}), 500
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import base64
 import os
 import uuid
@@ -435,21 +914,7 @@ def animal_history():
         for row in records:
             row["_id"] = str(row["_id"])
             ts = row.get("timestamp")
-            if ts is not None:
-                import datetime
-                if isinstance(ts, datetime.datetime):
-                    # Convert to IST and format with explicit +05:30 offset
-                    # so the frontend parseTimestamp() knows it's already IST
-                    IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
-                    if ts.tzinfo is None:
-                        ts = ts.replace(tzinfo=IST)
-                    else:
-                        ts = ts.astimezone(IST)
-                    row["timestamp"] = ts.strftime("%Y-%m-%dT%H:%M:%S+05:30")
-                else:
-                    row["timestamp"] = iso_ist(ts)
-            else:
-                row["timestamp"] = None
+            row["timestamp"] = iso_ist(ts)
         return jsonify({"success": True, "data": records})
     except Exception as exc:
         return jsonify({"success": False, "error": str(exc)}), 500
