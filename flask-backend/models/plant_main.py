@@ -453,7 +453,7 @@ def has_human_face(image_path):
     faces = face_cascade.detectMultiScale(
         gray,
         scaleFactor=1.08,
-        minNeighbors=18,
+        minNeighbors=10,
         minSize=(100, 100)
     )
 
@@ -489,7 +489,7 @@ def has_human_face(image_path):
         upper_skin = np.array([18, 150, 255], dtype=np.uint8)
         mask = cv2.inRange(hsv, lower_skin, upper_skin)
         skin_ratio = cv2.countNonZero(mask) / float(w * h)
-        if skin_ratio < 0.20:
+        if skin_ratio < 0.12:
             continue
 
         return True
@@ -623,14 +623,19 @@ def predict(image_path):
 
     # ===== OpenCV vs Model comparison =====
     if opencv_says_human:
-        # Model is confident it's a plant → model wins (leaf false positive case)
-        if pred1.item() == 1 and confidence >= 0.78 and (confidence - second_conf) >= 0.12:
+    
+       print("opencv_says_human =", opencv_says_human)
+       print("plant_confidence =", confidence)
+       print("predicted_class =", predicted_class)
+    
+        # Only allow plant model to override if extremely confident
+       if pred1.item() == 1 and confidence >= 0.95 and (confidence - second_conf) >= 0.25:
             return model_result, model_conf
-        # Model also uncertain → OpenCV wins, treat as human
-        return "⚠ Human detected - Not a plant", 0.0
-
-    # OpenCV didn't flag → return model result normally
-    return model_result, model_conf
+    
+       return "✅ Human Detected", 0.0
+    
+    # OpenCV didn't flag a human
+    return model_result, model_conf    
 
 
 # -------------------------------

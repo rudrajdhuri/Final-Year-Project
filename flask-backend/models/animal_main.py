@@ -455,6 +455,13 @@
 
 
 
+
+
+
+
+
+
+
 import torch
 import timm
 import torch.nn.functional as F
@@ -497,7 +504,7 @@ def has_human_face(image_path):
     faces = face_cascade.detectMultiScale(
         gray,
         scaleFactor=1.08,
-        minNeighbors=18,        # raised: dog/cat snouts don't sustain this many overlaps
+        minNeighbors=10,        # raised: dog/cat snouts don't sustain this many overlaps
         minSize=(100, 100)
     )
 
@@ -536,7 +543,7 @@ def has_human_face(image_path):
         skin_mask  = cv2.inRange(hsv, lower_skin, upper_skin)
         skin_ratio = cv2.countNonZero(skin_mask) / float(w * h)
         # Require at least 20% skin-tone pixels (raised from 15%)
-        if skin_ratio < 0.20:
+        if skin_ratio < 0.12:
             continue
 
         # Passed all guards — treat as a real human face
@@ -715,13 +722,18 @@ def predict(image_path):
 
     # ===== OpenCV vs Model comparison =====
     if opencv_says_human:
-        # Model is confidently detecting an animal → model wins (e.g. dog false positive)
-        if top1_conf >= SPECIES_HIGH_CONF and gap >= SPECIES_GAP:
+    
+        print("opencv_says_human =", opencv_says_human)
+        print("predicted_class =", predicted_class)
+        print("top1_conf =", top1_conf)
+    
+        # Only allow model to override if extremely confident
+        if top1_conf >= 0.95 and gap >= 0.25:
             return model_result
-        # Model also uncertain → OpenCV wins, treat as human
-        return "⚠ Human detected - Not an animal"
-
-    # OpenCV didn't flag → return model result normally
+    
+        return "✅ Human Detected"
+    
+    # OpenCV didn't flag a human
     return model_result
 
 
