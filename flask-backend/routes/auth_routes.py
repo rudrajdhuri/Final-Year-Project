@@ -24,8 +24,10 @@ def _email_domain_valid(email: str) -> bool:
         domain = email.split("@")[1]
         dns.resolver.resolve(domain, "MX")
         return True
-    except Exception:
+    except dns.resolver.NXDOMAIN:
         return False
+    except Exception:
+        return True
 
 
 # ──────────────────────────────────────────

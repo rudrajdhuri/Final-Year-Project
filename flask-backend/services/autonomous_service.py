@@ -48,7 +48,10 @@ class ESP32ControlClient:
         if self._socket is not None:
             return
         if ws_connect is None:
-            raise RuntimeError("WebSocket sync client is unavailable in this Python environment")
+            raise RuntimeError(
+                "WebSocket sync client is unavailable in this Python environment. "
+                "Install a Python/websockets runtime that supports websockets.sync.client."
+            )
         self._socket = ws_connect(ESP32_CONTROL_WS_URL, open_timeout=3, close_timeout=1)
 
     def _close_unlocked(self):
@@ -81,6 +84,10 @@ class ESP32ControlClient:
                 continue
 
             if expected_kind and payload.get("kind") != expected_kind:
+                if expected_kind == "status" and _looks_like_status_payload(payload):
+                    return payload
+                if expected_kind == "path_export" and _looks_like_path_export_payload(payload):
+                    return payload
                 continue
             return payload
 
@@ -200,6 +207,76 @@ def _iso(value: datetime | None) -> str | None:
 
 def _duration_ms(start: datetime, end: datetime) -> int:
     return max(0, int((end - start).total_seconds() * 1000))
+
+
+def _coerce_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on", "paused", "complete", "completed"}
+    return False
+
+
+def _coerce_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except Exception:
+        try:
+            return int(float(value))
+        except Exception:
+            return default
+
+
+def _first_value(payload: dict[str, Any], *keys: str, default: Any = None) -> Any:
+    for key in keys:
+        if key in payload and payload.get(key) is not None:
+            return payload.get(key)
+    return default
+
+
+def _looks_like_status_payload(payload: dict[str, Any]) -> bool:
+    return any(
+        key in payload
+        for key in (
+            "elapsedMs",
+            "elapsed_ms",
+            "currentCommand",
+            "current_command",
+            "modeStatus",
+            "mode_status",
+            "playbackPaused",
+            "playback_paused",
+            "obstacle",
+            "completed",
+        )
+    )
+
+
+def _looks_like_path_export_payload(payload: dict[str, Any]) -> bool:
+    return "actions" in payload or "totalDurationMs" in payload or "total_duration_ms" in payload
+
+
+def _resolve_profile_query(object_id: ObjectId, user_id: str, owner_session_id: str | None) -> dict[str, Any]:
+    if user_id and user_id != "guest":
+        return {"_id": object_id, "user_id": user_id}
+    if owner_session_id:
+        return {"_id": object_id, "user_id": "guest", "owner_session_id": owner_session_id}
+    return {"_id": object_id, "user_id": "guest"}
+
+
+def _find_profile_for_autonomous(object_id: ObjectId, user_id: str, owner_session_id: str | None) -> dict[str, Any] | None:
+    collection = get_collection(COLLECTIONS["PROFILES"])
+    row = collection.find_one(_resolve_profile_query(object_id, user_id, owner_session_id))
+    if row is not None:
+        return row
+
+    if user_id and user_id != "guest":
+        return None
+
+    # Fallback for guest profiles recorded before session ownership existed or when the browser session changed.
+    return collection.find_one({"_id": object_id, "user_id": "guest"})
 
 
 def _normalize_path_actions(actions: list[dict[str, Any]] | None) -> list[dict[str, int]]:
@@ -481,7 +558,21 @@ def get_profiles(user_id: str | None = None, owner_session_id: str | None = None
     if user_id and user_id != "guest":
         query = {"user_id": user_id}
     else:
-        query = {"user_id": "guest", "owner_session_id": owner_session_id} if owner_session_id else {"_id": None}
+        collection = get_collection(COLLECTIONS["PROFILES"])
+        rows = []
+        if owner_session_id:
+            rows = list(
+                collection.find({"user_id": "guest", "owner_session_id": owner_session_id})
+                .sort("created_at", -1)
+                .limit(PROFILE_LIMIT)
+            )
+        if not rows:
+            rows = list(
+                collection.find({"user_id": "guest"})
+                .sort("created_at", -1)
+                .limit(PROFILE_LIMIT)
+            )
+        return [_serialize_profile(row) for row in rows]
 
     rows = list(
         get_collection(COLLECTIONS["PROFILES"])
@@ -510,11 +601,19 @@ def _set_autonomous_state(**updates):
 
 
 def _apply_esp32_status(status_payload: dict[str, Any], segments: list[dict[str, Any]], total_duration_ms: int):
-    obstacle = bool(status_payload.get("obstacle", False))
-    playback_paused = bool(status_payload.get("playbackPaused", False))
-    mode_status = str(status_payload.get("modeStatus", "MANUAL") or "MANUAL")
-    progress_ms = min(total_duration_ms, max(0, int(status_payload.get("elapsedMs", 0) or 0)))
-    current_command = VALUE_TO_DIRECTION.get(int(status_payload.get("currentCommand", 0) or 0), "S")
+    obstacle = _coerce_bool(_first_value(status_payload, "obstacle", "isObstacle", default=False))
+    playback_paused = _coerce_bool(
+        _first_value(status_payload, "playbackPaused", "playback_paused", "paused", default=False)
+    )
+    mode_status = str(_first_value(status_payload, "modeStatus", "mode_status", "mode", default="MANUAL") or "MANUAL")
+    progress_ms = min(
+        total_duration_ms,
+        max(0, _coerce_int(_first_value(status_payload, "elapsedMs", "elapsed_ms", "elapsed", default=0))),
+    )
+    current_command = VALUE_TO_DIRECTION.get(
+        _coerce_int(_first_value(status_payload, "currentCommand", "current_command", "command", default=0)),
+        "S",
+    )
     current_direction = "S" if playback_paused else current_command
     paused_reason = "obstacle" if playback_paused else None
     current_segment_index = _current_segment_index(segments, progress_ms)
@@ -555,7 +654,7 @@ def _run_autonomous_profile(profile_doc: dict[str, Any]):
             status_payload = _control_client.get_status()
             _apply_esp32_status(status_payload, segments, total_duration_ms)
 
-            completed = bool(status_payload.get("completed"))
+            completed = _coerce_bool(_first_value(status_payload, "completed", "isCompleted", default=False))
             if completed:
                 completed_at = _now()
                 with _state_lock:
@@ -595,12 +694,7 @@ def start_autonomous(profile_id: str, user_id: str = "guest", owner_session_id: 
     except Exception as exc:
         raise RuntimeError("Selected training profile id is invalid") from exc
 
-    if user_id and user_id != "guest":
-        query = {"_id": object_id, "user_id": user_id}
-    else:
-        query = {"_id": object_id, "user_id": "guest", "owner_session_id": owner_session_id}
-
-    row = get_collection(COLLECTIONS["PROFILES"]).find_one(query) if object_id else None
+    row = _find_profile_for_autonomous(object_id, user_id, owner_session_id) if object_id else None
     if row is None:
         raise RuntimeError("Selected training profile was not found")
 

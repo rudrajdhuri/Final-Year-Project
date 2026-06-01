@@ -537,8 +537,8 @@ def _open_camera():
 
         try:
             from libcamera import Transform
-            # transform = Transform(hflip=1, vflip=1)
-            transform = Transform()
+            transform = Transform(hflip=1, vflip=1)
+            # transform = Transform()
         except Exception:
             transform = None
 
