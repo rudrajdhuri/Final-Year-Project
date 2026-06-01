@@ -7,7 +7,7 @@ from typing import Any
 from bson import ObjectId
 
 from database import COLLECTIONS, get_collection, limit_collection
-from services.live_detection_service import start_detection, stop_detection
+from services.live_detection_service import CAPTURE_INTERVAL_SECONDS, run_autonomous_detection_sample, start_detection, stop_detection
 from services.runtime_state import clear_arm, set_autonomous_motion
 from services.time_service import iso_ist, now_ist
 
@@ -194,6 +194,11 @@ _autonomous_state: dict[str, Any] = {
     "owner_session_id": None,
     "error": None,
     "obstacle": False,
+    "control_stage": "idle",
+    "esp32_last_status": None,
+    "esp32_last_error": None,
+    "detection_last_error": None,
+    "detection_last_sample_at": None,
 }
 
 
@@ -630,6 +635,102 @@ def _apply_esp32_status(status_payload: dict[str, Any], segments: list[dict[str,
     )
 
 
+def _complete_autonomous(segments: list[dict[str, Any]], total_duration_ms: int):
+    completed_at = _now()
+    with _state_lock:
+        _autonomous_state["running"] = False
+        _autonomous_state["completed"] = True
+        _autonomous_state["completed_at"] = completed_at
+        _autonomous_state["paused_reason"] = None
+        _autonomous_state["current_direction"] = "S"
+        _autonomous_state["current_segment_index"] = len(segments) - 1 if segments else -1
+        _autonomous_state["progress_ms"] = total_duration_ms
+        _autonomous_state["mode_status"] = "MANUAL"
+        _autonomous_state["playback_paused"] = False
+        _autonomous_state["control_stage"] = "completed"
+    set_autonomous_motion(False, "S")
+
+
+def _is_autonomous_running() -> bool:
+    with _state_lock:
+        return bool(_autonomous_state["running"])
+
+
+def _sample_autonomous_models(user_id: str, owner_session_id: str | None):
+    try:
+        run_autonomous_detection_sample(user_id, owner_session_id)
+        _set_autonomous_state(detection_last_error=None, detection_last_sample_at=_now())
+    except Exception as exc:
+        _set_autonomous_state(detection_last_error=str(exc))
+
+
+def _status_mode(status_payload: dict[str, Any]) -> str:
+    return str(_first_value(status_payload, "modeStatus", "mode_status", "mode", default="") or "").upper()
+
+
+def _status_progress(status_payload: dict[str, Any]) -> int:
+    return _coerce_int(_first_value(status_payload, "elapsedMs", "elapsed_ms", "elapsed", default=0))
+
+
+def _status_direction(status_payload: dict[str, Any]) -> str:
+    return VALUE_TO_DIRECTION.get(
+        _coerce_int(_first_value(status_payload, "currentCommand", "current_command", "command", default=0)),
+        "S",
+    )
+
+
+def _run_pi_timed_replay(
+    segments: list[dict[str, Any]],
+    total_duration_ms: int,
+    user_id: str,
+    owner_session_id: str | None,
+):
+    _set_autonomous_state(control_stage="pi_timed_replay", mode_status="PI_REPLAY", esp32_last_error=None)
+    progress_ms = 0
+    last_sample_at = 0.0
+
+    try:
+        for index, segment in enumerate(segments):
+            if not _is_autonomous_running():
+                return
+
+            direction = str(segment.get("direction") or "S")
+            duration_ms = max(0, int(segment.get("duration_ms", 0)))
+            if direction not in COMMAND_TO_VALUE or duration_ms <= 0:
+                continue
+
+            _control_client.move(direction)
+            set_autonomous_motion(True, direction)
+            segment_start = time.monotonic()
+            while _is_autonomous_running():
+                elapsed_ms = int((time.monotonic() - segment_start) * 1000)
+                current_progress = min(total_duration_ms, progress_ms + min(elapsed_ms, duration_ms))
+                _set_autonomous_state(
+                    current_direction=direction,
+                    current_segment_index=index,
+                    progress_ms=current_progress,
+                    mode_status="PI_REPLAY",
+                    playback_paused=False,
+                )
+
+                now = time.monotonic()
+                if now - last_sample_at >= CAPTURE_INTERVAL_SECONDS:
+                    last_sample_at = now
+                    _sample_autonomous_models(user_id, owner_session_id)
+
+                if elapsed_ms >= duration_ms:
+                    break
+                time.sleep(0.1)
+
+            progress_ms = min(total_duration_ms, progress_ms + duration_ms)
+
+        _control_client.stop()
+        _complete_autonomous(segments, total_duration_ms)
+    except Exception as exc:
+        _set_autonomous_state(esp32_last_error=str(exc))
+        raise
+
+
 def _run_autonomous_profile(profile_doc: dict[str, Any]):
     movement_path = _profile_path_actions(profile_doc)
     segments = profile_doc.get("segments") or _segments_from_actions(movement_path)
@@ -638,41 +739,64 @@ def _run_autonomous_profile(profile_doc: dict[str, Any]):
     owner_session_id = profile_doc.get("_active_owner_session_id")
 
     try:
+        _set_autonomous_state(control_stage="connecting_esp32", esp32_last_error=None, detection_last_error=None)
         _control_client.set_speed(AUTONOMOUS_SPEED)
         _control_client.stop()
         clear_arm()
         set_autonomous_motion(True, "S")
+        _set_autonomous_state(control_stage="loading_path")
         _control_client.load_path(movement_path)
         _start_detection_sessions(user_id, owner_session_id)
+        _set_autonomous_state(control_stage="starting_playback")
         _control_client.mode_play()
+        _set_autonomous_state(control_stage="esp32_playback")
 
+        status_checks = 0
+        status_failures = 0
+        playback_confirmed = False
+        last_sample_at = 0.0
         while True:
             with _state_lock:
                 if not _autonomous_state["running"]:
                     break
 
-            status_payload = _control_client.get_status()
+            try:
+                status_payload = _control_client.get_status()
+            except Exception as exc:
+                status_failures += 1
+                _set_autonomous_state(esp32_last_error=str(exc))
+                if status_failures >= 2:
+                    _run_pi_timed_replay(segments, total_duration_ms, user_id, owner_session_id)
+                    break
+                time.sleep(0.5)
+                continue
+
+            status_failures = 0
+            status_checks += 1
+            _set_autonomous_state(esp32_last_status=status_payload, esp32_last_error=None)
             _apply_esp32_status(status_payload, segments, total_duration_ms)
+            if _status_mode(status_payload) == "PLAYBACK" or _status_progress(status_payload) > 0 or _status_direction(status_payload) != "S":
+                playback_confirmed = True
+            elif status_checks >= 4 and not playback_confirmed:
+                _run_pi_timed_replay(segments, total_duration_ms, user_id, owner_session_id)
+                break
+
+            now = time.monotonic()
+            if now - last_sample_at >= CAPTURE_INTERVAL_SECONDS:
+                last_sample_at = now
+                _sample_autonomous_models(user_id, owner_session_id)
 
             completed = _coerce_bool(_first_value(status_payload, "completed", "isCompleted", default=False))
             if completed:
-                completed_at = _now()
-                with _state_lock:
-                    _autonomous_state["running"] = False
-                    _autonomous_state["completed"] = True
-                    _autonomous_state["completed_at"] = completed_at
-                    _autonomous_state["paused_reason"] = None
-                    _autonomous_state["current_direction"] = "S"
-                    _autonomous_state["current_segment_index"] = len(segments) - 1 if segments else -1
-                    _autonomous_state["progress_ms"] = total_duration_ms
-                    _autonomous_state["mode_status"] = "MANUAL"
-                    _autonomous_state["playback_paused"] = False
-                set_autonomous_motion(False, "S")
+                _complete_autonomous(segments, total_duration_ms)
                 break
 
             time.sleep(0.5)
     except Exception as exc:
-        _control_client.stop()
+        try:
+            _control_client.stop()
+        except Exception:
+            pass
         clear_arm()
         set_autonomous_motion(False, "S")
         with _state_lock:
@@ -682,6 +806,7 @@ def _run_autonomous_profile(profile_doc: dict[str, Any]):
             _autonomous_state["current_direction"] = "S"
             _autonomous_state["mode_status"] = "ERROR"
             _autonomous_state["playback_paused"] = False
+            _autonomous_state["control_stage"] = "error"
     finally:
         _stop_detection_sessions()
 
@@ -705,6 +830,8 @@ def start_autonomous(profile_id: str, user_id: str = "guest", owner_session_id: 
     row["_active_owner_session_id"] = owner_session_id
     segments = row.get("segments") or _segments_from_actions(movement_path)
     total_duration_ms = max(int(row.get("total_duration_ms", 0) or 0), _path_duration_ms(movement_path))
+    if not segments or total_duration_ms <= 0:
+        raise RuntimeError("Selected profile does not contain usable movement segments. Train and save it again.")
 
     with _state_lock:
         if _recording_state["active"]:
@@ -734,6 +861,11 @@ def start_autonomous(profile_id: str, user_id: str = "guest", owner_session_id: 
                 "owner_session_id": owner_session_id,
                 "error": None,
                 "obstacle": False,
+                "control_stage": "queued",
+                "esp32_last_status": None,
+                "esp32_last_error": None,
+                "detection_last_error": None,
+                "detection_last_sample_at": None,
             }
         )
 
@@ -802,6 +934,10 @@ def get_autonomous_status(viewer_session_id: str | None = None) -> dict[str, Any
         "path_action_count": int(status.get("path_action_count") or 0),
         "mode_status": status.get("mode_status") or "MANUAL",
         "playback_paused": bool(status.get("playback_paused", False)),
+        "control_stage": status.get("control_stage") or "idle",
+        "esp32_last_error": status.get("esp32_last_error"),
+        "detection_last_error": status.get("detection_last_error"),
+        "detection_last_sample_at": _iso(status.get("detection_last_sample_at")),
     }
 
 

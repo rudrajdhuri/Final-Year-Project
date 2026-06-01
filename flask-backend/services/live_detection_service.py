@@ -80,7 +80,13 @@ def _refresh_expired_modes(current_time: datetime) -> None:
 def _viewer_can_access(session_id: str | None) -> bool:
     if not session_id:
         return False
-    return bool(is_lock_owner(session_id))
+    if is_lock_owner(session_id):
+        return True
+    with _lock:
+        return any(
+            mode_state["running"] and mode_state.get("owner_session_id") == session_id
+            for mode_state in _states.values()
+        )
 
 
 def _encode_frame(frame) -> bytes | None:
@@ -198,7 +204,7 @@ def get_detection_status(mode: str, viewer_session_id: str | None = None) -> dic
         owner = bool(
             viewer_session_id
             and mode_state.get("owner_session_id") == viewer_session_id
-            and is_lock_owner(viewer_session_id)
+            and (is_lock_owner(viewer_session_id) or mode_state["running"])
         )
 
     remaining_seconds = 0
@@ -272,3 +278,30 @@ def frame_snapshot_response(viewer_session_id: str | None = None):
 
 def capture_cached_frame(viewer_session_id: str | None = None):
     return None
+
+
+def run_autonomous_detection_sample(user_id: str, owner_session_id: str | None) -> None:
+    if _flask_app is None:
+        raise RuntimeError("Live detection app context is not bound")
+
+    frame, _ = capture_single_frame()
+    with _flask_app.app_context():
+        from routes.animal_detection import _save_frame_and_predict as save_animal_frame
+        from routes.plant_detection import _save_frame_and_predict as save_plant_frame
+
+        save_animal_frame(
+            frame.copy(),
+            user_id,
+            "animal_auto",
+            owner_session_id,
+            source="autonomous",
+            save_only_relevant=True,
+        )
+        save_plant_frame(
+            frame.copy(),
+            user_id,
+            "plant_auto",
+            owner_session_id,
+            source="autonomous",
+            save_only_relevant=True,
+        )

@@ -4410,6 +4410,7 @@ function DetectionTab({
   const showIdleControls = !lockedByOther && !ownedLiveSessionRunning && !ownedAutonomousRunning;
   const bigBoxUpload = uploadImage || previewImage;
   const progressActive = ownedLiveSessionRunning || ownedAutonomousRunning;
+  const frontendDetectionActive = ownedLiveSessionRunning && !ownedAutonomousRunning;
   const displayPhoto = sharedSample.url;
   const manualTotalSeconds = status?.duration_seconds || 600;
   const manualElapsedSeconds = Math.max(0, manualTotalSeconds - (status?.remaining_seconds || 0));
@@ -4543,7 +4544,7 @@ function DetectionTab({
   // Previously activeModes caused both tabs to call both endpoints,
   // meaning a sample on the animal tab also ran plant detection and vice versa.
   useEffect(() => {
-    if (!progressActive || !sharedSample.dataUrl) return;
+    if (!frontendDetectionActive || !sharedSample.dataUrl) return;
     if (autoDetectingRef.current) return;
 
     autoDetectingRef.current = true;
@@ -4573,7 +4574,7 @@ function DetectionTab({
     };
 
     void detectSample();
-  }, [mode, progressActive, sessionId, sharedSample.dataUrl, sharedSample.version, user?.id]);
+  }, [frontendDetectionActive, mode, sessionId, sharedSample.dataUrl, sharedSample.version, user?.id]);
 
   const stopLiveDetection = async () => {
     setSessionBusy(true);
