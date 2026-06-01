@@ -646,14 +646,20 @@ def get_sensor_history(
     owner_session_id: str | None = None,
 ) -> list[dict[str, Any]]:
     sensor_col = get_collection(COLLECTIONS["SENSORS"])
-    if user_id and user_id != "guest":
-        query: dict[str, Any] = {"user_id": user_id}
-    elif owner_session_id:
-        query = {"owner_session_id": owner_session_id}
-    else:
-        query = {}
+    def _fetch(query: dict[str, Any]) -> list[dict[str, Any]]:
+        return list(sensor_col.find(query).sort("timestamp", -1).limit(limit))
 
-    rows = list(sensor_col.find(query).sort("timestamp", -1).limit(limit))
+    if user_id and user_id != "guest":
+        rows = _fetch({"user_id": user_id})
+        if not rows and owner_session_id:
+            rows = _fetch({"owner_session_id": owner_session_id})
+    elif owner_session_id:
+        rows = _fetch({"owner_session_id": owner_session_id})
+        if not rows:
+            rows = _fetch({"user_id": "guest"})
+    else:
+        rows = _fetch({})
+
     return [
         {
             "id": str(row.get("_id")),

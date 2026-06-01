@@ -2,6 +2,11 @@ from flask_pymongo import PyMongo
 
 mongo = PyMongo()
 
+COLLECTION_LIMITS = {
+    "animaldect_data": 25,
+    "plantdect_data": 15,
+}
+
 
 def get_db():
     return mongo.db
@@ -11,7 +16,10 @@ def get_collection(name: str):
     return mongo.db[name]
 
 
-def limit_collection(collection_name: str, max_records: int = 50):
+def limit_collection(collection_name: str, max_records: int | None = None):
+    if max_records is None:
+        max_records = COLLECTION_LIMITS.get(collection_name, 50)
+
     collection = get_collection(collection_name)
     count = collection.count_documents({})
     if count <= max_records:

@@ -1061,7 +1061,9 @@ export default function HistoryContent() {
           const [animalRes, plantRes, soilRes] = await Promise.all([
             apiFetch(`/api/animal/history?user_id=${user!.id}`),
             apiFetch(`/api/plant/history?user_id=${user!.id}`),
-            apiFetch(`/api/soil/history?user_id=${user!.id}&limit=10`),
+            apiFetch(
+              `/api/soil/history?user_id=${user!.id}&session_id=${encodeURIComponent(sessionId)}&limit=10`
+            ),
           ]);
           const [animalJson, plantJson, soilJson] = await Promise.all([
             animalRes.json(),

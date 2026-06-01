@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Activity, Droplets, FlaskConical, Thermometer, Waves } from "lucide-react";
 
 import Graph from "../components/graph";
-import { pushGuestHistory, useAuth } from "../components/AuthContext";
+import { getClientSessionId, pushGuestHistory, useAuth } from "../components/AuthContext";
 import { apiFetch } from "@/lib/api";
 
 const GUEST_SOIL_PAGE_KEY = "agribot_guest_soil_page_history";
@@ -75,6 +75,7 @@ export default function SoilSensorPage() {
   const [error, setError] = useState<string | null>(null);
   const [guestPageHistory, setGuestPageHistory] = useState<SoilHistoryRow[]>([]);
   const lastGuestTimestampRef = useRef<string | null>(null);
+  const sessionId = getClientSessionId();
 
   useEffect(() => {
     if (!isGuest) {
@@ -89,9 +90,12 @@ export default function SoilSensorPage() {
 
     const load = async () => {
       try {
-        const response = await apiFetch(
-          `/api/soil/readings${user?.id ? `?user_id=${encodeURIComponent(user.id)}` : ""}`
-        );
+        const params = new URLSearchParams();
+        params.set("session_id", sessionId);
+        if (user?.id) {
+          params.set("user_id", user.id);
+        }
+        const response = await apiFetch(`/api/soil/readings?${params.toString()}`);
         if (!response.ok) throw new Error("Soil readings could not be loaded");
 
         const payload = await response.json();
@@ -110,7 +114,7 @@ export default function SoilSensorPage() {
       active = false;
       window.clearInterval(timer);
     };
-  }, [user?.id]);
+  }, [sessionId, user?.id]);
 
   useEffect(() => {
     if (!isGuest || !data?.timestamp || !data?.arm_active) return;

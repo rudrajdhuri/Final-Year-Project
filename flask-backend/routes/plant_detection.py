@@ -783,6 +783,10 @@ def plant_history():
         if user_id == "guest" and session_id:
             query["owner_session_id"] = session_id
         records = list(plant_col.find(query).sort("timestamp", -1).limit(15))
+        if user_id == "guest" and session_id and not records:
+            records = list(
+                plant_col.find({"user_id": "guest"}).sort("timestamp", -1).limit(15)
+            )
         for row in records:
             row["_id"] = str(row["_id"])
             ts = row.get("timestamp")
