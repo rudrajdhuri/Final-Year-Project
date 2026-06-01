@@ -887,7 +887,7 @@ def capture_camera():
         payload = _save_frame_and_predict(
             frame, user_id, "animal_camera",
             owner_session_id, source="camera",
-            save_only_relevant=True,
+            save_only_relevant=False,
         )
         payload["camera_source"] = source
         if payload.get("threat_detected"):
@@ -911,10 +911,10 @@ def animal_history():
         query = {"user_id": user_id}
         if user_id == "guest" and session_id:
             query["owner_session_id"] = session_id
-        records = list(animal_col.find(query).sort("timestamp", -1).limit(15))
+        records = list(animal_col.find(query).sort("timestamp", -1).limit(25))
         if user_id == "guest" and session_id and not records:
             records = list(
-                animal_col.find({"user_id": "guest"}).sort("timestamp", -1).limit(15)
+                animal_col.find({"user_id": "guest"}).sort("timestamp", -1).limit(25)
             )
         for row in records:
             row["_id"] = str(row["_id"])

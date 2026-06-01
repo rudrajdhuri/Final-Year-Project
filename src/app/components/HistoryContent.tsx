@@ -1021,7 +1021,7 @@ export default function HistoryContent() {
                 return true;
               })
               .sort((a: any, b: any) => toTimeMs(b.timestamp) - toTimeMs(a.timestamp))
-              .slice(0, 15);
+              .slice(0, 25);
           };
 
           setDetectionRecords({

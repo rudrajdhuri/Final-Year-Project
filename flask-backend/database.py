@@ -4,7 +4,7 @@ mongo = PyMongo()
 
 COLLECTION_LIMITS = {
     "animaldect_data": 25,
-    "plantdect_data": 15,
+    "plantdect_data": 25,
 }
 
 
