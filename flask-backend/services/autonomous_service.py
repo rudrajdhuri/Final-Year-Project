@@ -22,6 +22,7 @@ AUTONOMOUS_SPEED = 200
 MIN_SEGMENT_MS = 250
 PROFILE_LIMIT = 10
 ESP32_RESPONSE_TIMEOUT = 4.0
+PATH_APPEND_DELAY_SECONDS = 0.03
 
 COMMAND_TO_VALUE = {
     "F": 1,
@@ -137,17 +138,38 @@ class ESP32ControlClient:
     def mode_stop(self):
         self.send("Mode,stop")
 
-    def clear_path(self):
+    def clear_path(self, wait_ack: bool = False) -> dict[str, Any] | None:
+        if wait_ack:
+            return self.request_json("Path,clear", expected_kind="status")
         self.send("Path,clear")
+        return None
 
-    def append_path_action(self, command: int, timestamp_ms: int):
-        self.send(f"Path,append,{int(command)},{int(timestamp_ms)}")
+    def append_path_action(self, command: int, timestamp_ms: int, wait_ack: bool = False) -> dict[str, Any] | None:
+        message = f"Path,append,{int(command)},{int(timestamp_ms)}"
+        if wait_ack:
+            return self.request_json(message, expected_kind="status")
+        self.send(message)
+        return None
 
     def load_path(self, actions: list[dict[str, int]]):
         self.mode_stop()
-        self.clear_path()
-        for action in actions:
-            self.append_path_action(action["command"], action["timestamp_ms"])
+        time.sleep(0.05)
+        self.close()
+        self.clear_path(wait_ack=True)
+        time.sleep(0.05)
+        for index, action in enumerate(actions):
+            status = self.append_path_action(action["command"], action["timestamp_ms"], wait_ack=True)
+            path_length = _coerce_int(_first_value(status or {}, "pathLength", "path_length", default=0))
+            if path_length < index + 1:
+                raise RuntimeError(
+                    f"ESP32 path upload stopped at {path_length}/{len(actions)} actions"
+                )
+            time.sleep(PATH_APPEND_DELAY_SECONDS)
+
+        status = self.get_status()
+        path_length = _coerce_int(_first_value(status, "pathLength", "path_length", default=0))
+        if path_length < len(actions):
+            raise RuntimeError(f"ESP32 path load incomplete: {path_length}/{len(actions)} actions")
 
     def export_path(self) -> dict[str, Any]:
         return self.request_json("Path,export", expected_kind="path_export")
@@ -253,6 +275,8 @@ def _looks_like_status_payload(payload: dict[str, Any]) -> bool:
             "mode_status",
             "playbackPaused",
             "playback_paused",
+            "pathLength",
+            "path_length",
             "obstacle",
             "completed",
         )
@@ -433,19 +457,15 @@ def stop_manual_recording(profile_name: str) -> dict[str, Any]:
         _flush_recording_segment(current_time)
         user_id = _recording_state["user_id"]
         owner_session_id = _recording_state.get("owner_session_id")
+        recorded_segments = [dict(segment) for segment in _recording_state["segments"]]
 
+    exported: dict[str, Any] = {}
+    export_error: str | None = None
     try:
         _control_client.mode_stop()
         exported = _control_client.export_path()
     except Exception as exc:
-        with _state_lock:
-            _recording_state["active"] = False
-            _recording_state["started_at"] = None
-            _recording_state["last_event_at"] = None
-            _recording_state["last_direction"] = None
-            _recording_state["owner_session_id"] = None
-            _recording_state["segments"] = []
-        raise RuntimeError(f"Could not save the ESP32 training path: {exc}") from exc
+        export_error = str(exc)
 
     with _state_lock:
         _recording_state["active"] = False
@@ -456,13 +476,21 @@ def stop_manual_recording(profile_name: str) -> dict[str, Any]:
         _recording_state["segments"] = []
 
     movement_path = _normalize_path_actions(exported.get("actions"))
-    segments = _segments_from_actions(movement_path)
+    path_source = "esp32"
+    if not movement_path:
+        movement_path = _legacy_path_from_segments(recorded_segments)
+        path_source = "pi_recorded_segments"
+
+    segments = _segments_from_actions(movement_path) or recorded_segments
     total_duration_ms = max(
         int(exported.get("totalDurationMs", 0) or 0),
         _path_duration_ms(movement_path),
+        sum(int(segment.get("duration_ms", 0)) for segment in recorded_segments),
     )
 
     if not movement_path or total_duration_ms <= 0 or not segments:
+        if export_error:
+            raise RuntimeError(f"Could not save the ESP32 training path: {export_error}") from None
         raise RuntimeError("No movement was recorded. Drive the bot manually before saving.")
 
     current_time = _now()
@@ -477,10 +505,13 @@ def stop_manual_recording(profile_name: str) -> dict[str, Any]:
         "breakpoints_ms": [],
         "speed_pwm": AUTONOMOUS_SPEED,
         "total_duration_ms": total_duration_ms,
+        "path_source": path_source,
         "timestamp": current_time,
         "created_at": current_time,
         "updated_at": current_time,
     }
+    if export_error:
+        profile_doc["path_export_error"] = export_error
 
     collection = get_collection(COLLECTIONS["PROFILES"])
     inserted = collection.insert_one(profile_doc)
@@ -679,58 +710,6 @@ def _status_direction(status_payload: dict[str, Any]) -> str:
     )
 
 
-def _run_pi_timed_replay(
-    segments: list[dict[str, Any]],
-    total_duration_ms: int,
-    user_id: str,
-    owner_session_id: str | None,
-):
-    _set_autonomous_state(control_stage="pi_timed_replay", mode_status="PI_REPLAY", esp32_last_error=None)
-    progress_ms = 0
-    last_sample_at = 0.0
-
-    try:
-        for index, segment in enumerate(segments):
-            if not _is_autonomous_running():
-                return
-
-            direction = str(segment.get("direction") or "S")
-            duration_ms = max(0, int(segment.get("duration_ms", 0)))
-            if direction not in COMMAND_TO_VALUE or duration_ms <= 0:
-                continue
-
-            _control_client.move(direction)
-            set_autonomous_motion(True, direction)
-            segment_start = time.monotonic()
-            while _is_autonomous_running():
-                elapsed_ms = int((time.monotonic() - segment_start) * 1000)
-                current_progress = min(total_duration_ms, progress_ms + min(elapsed_ms, duration_ms))
-                _set_autonomous_state(
-                    current_direction=direction,
-                    current_segment_index=index,
-                    progress_ms=current_progress,
-                    mode_status="PI_REPLAY",
-                    playback_paused=False,
-                )
-
-                now = time.monotonic()
-                if now - last_sample_at >= CAPTURE_INTERVAL_SECONDS:
-                    last_sample_at = now
-                    _sample_autonomous_models(user_id, owner_session_id)
-
-                if elapsed_ms >= duration_ms:
-                    break
-                time.sleep(0.1)
-
-            progress_ms = min(total_duration_ms, progress_ms + duration_ms)
-
-        _control_client.stop()
-        _complete_autonomous(segments, total_duration_ms)
-    except Exception as exc:
-        _set_autonomous_state(esp32_last_error=str(exc))
-        raise
-
-
 def _run_autonomous_profile(profile_doc: dict[str, Any]):
     movement_path = _profile_path_actions(profile_doc)
     segments = profile_doc.get("segments") or _segments_from_actions(movement_path)
@@ -746,14 +725,12 @@ def _run_autonomous_profile(profile_doc: dict[str, Any]):
         set_autonomous_motion(True, "S")
         _set_autonomous_state(control_stage="loading_path")
         _control_client.load_path(movement_path)
-        _start_detection_sessions(user_id, owner_session_id)
         _set_autonomous_state(control_stage="starting_playback")
         _control_client.mode_play()
         _set_autonomous_state(control_stage="esp32_playback")
+        _start_detection_sessions(user_id, owner_session_id)
 
-        status_checks = 0
         status_failures = 0
-        playback_confirmed = False
         last_sample_at = 0.0
         while True:
             with _state_lock:
@@ -766,20 +743,13 @@ def _run_autonomous_profile(profile_doc: dict[str, Any]):
                 status_failures += 1
                 _set_autonomous_state(esp32_last_error=str(exc))
                 if status_failures >= 2:
-                    _run_pi_timed_replay(segments, total_duration_ms, user_id, owner_session_id)
-                    break
+                    raise RuntimeError(f"ESP32 playback status failed: {exc}") from exc
                 time.sleep(0.5)
                 continue
 
             status_failures = 0
-            status_checks += 1
             _set_autonomous_state(esp32_last_status=status_payload, esp32_last_error=None)
             _apply_esp32_status(status_payload, segments, total_duration_ms)
-            if _status_mode(status_payload) == "PLAYBACK" or _status_progress(status_payload) > 0 or _status_direction(status_payload) != "S":
-                playback_confirmed = True
-            elif status_checks >= 4 and not playback_confirmed:
-                _run_pi_timed_replay(segments, total_duration_ms, user_id, owner_session_id)
-                break
 
             now = time.monotonic()
             if now - last_sample_at >= CAPTURE_INTERVAL_SECONDS:
